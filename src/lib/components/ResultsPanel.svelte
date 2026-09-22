@@ -13,6 +13,23 @@
 	} = $props();
 
 	let activeTab = $state<'optimal' | 'minUnique'>('optimal');
+	let foodTab = $state<'fewest' | 'minAdvanced'>('fewest');
+
+	const showFoodAllocations = $derived(
+		foodTab === 'minAdvanced' ? result.foodAllocationsMinAdvanced : result.foodAllocations
+	);
+	const showFoodIngredients = $derived(
+		foodTab === 'minAdvanced' ? result.totalIngredientsMinAdvanced : result.totalIngredients
+	);
+	const showFoodItems = $derived(
+		foodTab === 'minAdvanced' ? result.totalFoodItemsMinAdvanced : result.totalFoodItems
+	);
+	const showAchievedStats = $derived(
+		foodTab === 'minAdvanced' ? result.achievedStatsMinAdvanced : result.achievedStats
+	);
+	const showAdvancedMaterials = $derived(
+		foodTab === 'minAdvanced' ? result.advancedMaterialsMinAdvanced : result.advancedMaterials
+	);
 
 	const showMemoryAllocations = $derived(
 		activeTab === 'minUnique' ? result.memoryAllocationsMinUnique : result.memoryAllocations
@@ -24,7 +41,7 @@
 		activeTab === 'minUnique' ? result.totalMemoryItemsMinUnique : result.totalMemoryItems
 	);
 	const showTotalItems = $derived(
-		activeTab === 'minUnique' ? result.totalItemsMinUnique : result.totalItems
+		showFoodItems + showTotalMemoryItems
 	);
 	const altInfeasible = $derived(
 		activeTab === 'minUnique' && !result.minUniqueFeasible
@@ -45,8 +62,8 @@
 				<span class="total-label">total items</span>
 			</div>
 			<div class="total-breakdown">
-				{#if result.totalFoodItems > 0}
-					<span class="sub-count">{result.totalFoodItems} food</span>
+				{#if showFoodItems > 0}
+					<span class="sub-count">{showFoodItems} food</span>
 				{/if}
 				{#if showTotalMemoryItems > 0}
 					<span class="sub-count">
@@ -61,12 +78,33 @@
 			</div>
 		</div>
 
-		{#if result.foodAllocations.length > 0}
+		{#if showFoodAllocations.length > 0}
+			<div class="tab-bar">
+				<button
+					class="tab-btn"
+					class:active={foodTab === 'fewest'}
+					onclick={() => foodTab = 'fewest'}
+				>
+					Fewest Food ({result.totalFoodItems})
+				</button>
+				<button
+					class="tab-btn"
+					class:active={foodTab === 'minAdvanced'}
+					onclick={() => foodTab = 'minAdvanced'}
+				>
+					Save Advanced ({result.advancedMaterialsMinAdvanced} rare mats)
+				</button>
+			</div>
+
 			<div class="card">
 				<FoodBreakdown
-					allocations={result.foodAllocations}
-					totalIngredients={result.totalIngredients}
+					allocations={showFoodAllocations}
+					totalIngredients={showFoodIngredients}
 				/>
+				<p class="strategy-note">
+					Advanced materials used: <strong>{showAdvancedMaterials}</strong>
+					(Bioregulator + Mito Amplifier + Nanite Nutrient)
+				</p>
 			</div>
 		{/if}
 
@@ -95,7 +133,7 @@
 		{:else}
 			<div class="card">
 				<StatsTable
-					achievedStats={result.achievedStats}
+					achievedStats={showAchievedStats}
 					requiredStats={profession.physicalReqs}
 					achievedTraits={showAchievedTraits}
 					requiredTraits={profession.traitReqs}
@@ -178,6 +216,17 @@
 		padding: 4px 12px;
 		background: var(--bg-secondary);
 		border-radius: 20px;
+	}
+
+	.strategy-note {
+		margin-top: 14px;
+		font-size: 0.82rem;
+		color: var(--text-muted);
+		text-align: center;
+	}
+
+	.strategy-note strong {
+		color: var(--text-primary);
 	}
 
 	.tab-bar {
