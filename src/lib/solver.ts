@@ -187,14 +187,14 @@ function optimizeFoodBalanced(requirements: PhysicalStats): FoodAllocation[] {
 				food.ingredients.bioregulator +
 				food.ingredients.mitoAmplifier +
 				food.ingredients.naniteNutrient;
-			const uncommonMaterials =
-				food.ingredients.calcium +
-				food.ingredients.omega3 +
-				food.ingredients.vitaminD;
-
-			// Prefer variety, with a gentle bias toward cheaper/common recipes:
-			// common type = 3 points, uncommon type = 2, advanced type = 1.
-			const diversityWeight = advancedMaterials > 0 ? 1 : uncommonMaterials > 0 ? 2 : 3;
+			// Prefer variety using the game's official food rarity:
+			// Common = 3 points, Uncommon = 2, Rare = 1.
+			// Poor/Artifact are included defensively for future data additions.
+			const diversityWeight =
+				food.rarity === 'Poor' ? 4 :
+				food.rarity === 'Common' ? 3 :
+				food.rarity === 'Uncommon' ? 2 :
+				food.rarity === 'Rare' ? 1 : 0;
 			const qtyVar = food.name;
 			const usedVar = `used_food_${food.name}`;
 			const maxLink = `food_max_link_${food.name}`;
