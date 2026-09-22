@@ -139,17 +139,23 @@
 	}
 
 	.rarity-common {
-		color: var(--text-secondary);
+		color: #e5e7eb;
+		border-color: #6b7280;
 	}
 
 	.rarity-uncommon {
-		color: var(--accent);
+		color: #22c55e;
+		border-color: #166534;
 	}
 
-	.rarity-rare,
+	.rarity-rare {
+		color: #3b82f6;
+		border-color: #1d4ed8;
+	}
+
 	.rarity-artifact {
-		color: var(--text-primary);
-		border-color: var(--border-highlight);
+		color: #facc15;
+		border-color: #a16207;
 	}
 
 	.qty-cell {
