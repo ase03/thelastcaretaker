@@ -144,6 +144,130 @@ function optimizeFoodMinAdvanced(requirements: PhysicalStats): FoodAllocation[] 
 	return allocations.sort((a, b) => b.quantity - a.quantity);
 }
 
+
+function optimizeFoodBalanced(requirements: PhysicalStats): FoodAllocation[] {
+	if (!hasAnyRequirement(requirements, physicalStatKeys)) {
+		return [];
+	}
+
+	// Start from the resource-saving solution: keep its absolute minimum
+	// advanced-material spend, but allow up to 25% more portions to gain variety.
+	const baseline = optimizeFoodMinAdvanced(requirements);
+	if (baseline.length === 0) {
+		return [];
+	}
+
+	const baselineIngredients = computeTotalIngredients(baseline);
+	const minimumAdvanced = computeAdvancedMaterials(baselineIngredients);
+	const minimumFoodItems = baseline.reduce((sum, a) => sum + a.quantity, 0);
+	const maxFoodItems = Math.ceil(minimumFoodItems * 1.25);
+	const BIG_M = Math.max(200, maxFoodItems);
+
+	const buildModel = (diversityTarget?: number) => {
+		const constraints: Record<string, { min?: number; max?: number }> = {};
+
+		for (const key of physicalStatKeys) {
+			if (requirements[key] > 0) {
+				constraints[key] = { min: requirements[key] };
+			}
+		}
+
+		constraints.advancedMaterials = { min: minimumAdvanced, max: minimumAdvanced };
+		constraints.totalItems = { max: maxFoodItems };
+
+		if (diversityTarget !== undefined) {
+			constraints.diversityScore = { min: diversityTarget, max: diversityTarget };
+		}
+
+		const variables: Record<string, Record<string, number>> = {};
+		const ints: Record<string, number> = {};
+
+		for (const food of foodItems) {
+			const advancedMaterials =
+				food.ingredients.bioregulator +
+				food.ingredients.mitoAmplifier +
+				food.ingredients.naniteNutrient;
+			const uncommonMaterials =
+				food.ingredients.calcium +
+				food.ingredients.omega3 +
+				food.ingredients.vitaminD;
+
+			// Prefer variety, with a gentle bias toward cheaper/common recipes:
+			// common type = 3 points, uncommon type = 2, advanced type = 1.
+			const diversityWeight = advancedMaterials > 0 ? 1 : uncommonMaterials > 0 ? 2 : 3;
+			const qtyVar = food.name;
+			const usedVar = `used_food_${food.name}`;
+			const maxLink = `food_max_link_${food.name}`;
+			const minLink = `food_min_link_${food.name}`;
+			const binaryConstraint = `food_bin_${food.name}`;
+
+			variables[qtyVar] = {
+				totalItems: 1,
+				advancedMaterials,
+				[maxLink]: 1,
+				[minLink]: 1
+			};
+			for (const key of physicalStatKeys) {
+				if (food.stats[key] > 0) {
+					variables[qtyVar][key] = food.stats[key];
+				}
+			}
+			ints[qtyVar] = 1;
+
+			variables[usedVar] = {
+				diversityScore: diversityWeight,
+				[maxLink]: -BIG_M,
+				[minLink]: -1,
+				[binaryConstraint]: 1
+			};
+			ints[usedVar] = 1;
+
+			// qty <= M * used and qty >= used ensure the binary really means "used".
+			constraints[maxLink] = { max: 0 };
+			constraints[minLink] = { min: 0 };
+			constraints[binaryConstraint] = { max: 1 };
+		}
+
+		return { constraints, variables, ints };
+	};
+
+	// Stage 1: maximize weighted variety within the 25% portion allowance.
+	const varietyModel = buildModel();
+	const varietyResult = solver.Solve({
+		optimize: 'diversityScore',
+		opType: 'max' as const,
+		...varietyModel
+	});
+
+	if (!varietyResult.feasible) {
+		return baseline;
+	}
+
+	const bestDiversity = Math.round(varietyResult.result || 0);
+
+	// Stage 2: keep the best variety score, then use as few portions as possible.
+	const compactModel = buildModel(bestDiversity);
+	const compactResult = solver.Solve({
+		optimize: 'totalItems',
+		opType: 'min' as const,
+		...compactModel
+	});
+
+	if (!compactResult.feasible) {
+		return baseline;
+	}
+
+	const allocations: FoodAllocation[] = [];
+	for (const food of foodItems) {
+		const qty = Math.round(compactResult[food.name] || 0);
+		if (qty > 0) {
+			allocations.push({ item: food.name, quantity: qty, food });
+		}
+	}
+
+	return allocations.sort((a, b) => b.quantity - a.quantity);
+}
+
 function optimizeMemories(requirements: PsychTraits): MemoryAllocation[] {
 	if (!hasAnyRequirement(requirements, traitKeys)) {
 		return [];
@@ -372,19 +496,23 @@ function computeAdvancedMaterials(ingredients: Ingredients): number {
 export function optimizeBuild(physicalReqs: PhysicalStats, traitReqs: PsychTraits): OptimizationResult {
 	const foodAllocations = optimizeFood(physicalReqs);
 	const foodAllocationsMinAdvanced = optimizeFoodMinAdvanced(physicalReqs);
+	const foodAllocationsBalanced = optimizeFoodBalanced(physicalReqs);
 	const memoryAllocations = optimizeMemories(traitReqs);
 	const memoryAllocationsMinUnique = optimizeMemoriesMinUnique(traitReqs);
 
 	const totalFoodItems = foodAllocations.reduce((sum, a) => sum + a.quantity, 0);
 	const totalFoodItemsMinAdvanced = foodAllocationsMinAdvanced.reduce((sum, a) => sum + a.quantity, 0);
+	const totalFoodItemsBalanced = foodAllocationsBalanced.reduce((sum, a) => sum + a.quantity, 0);
 	const totalMemoryItems = memoryAllocations.reduce((sum, a) => sum + a.quantity, 0);
 	const totalMemoryItemsMinUnique = memoryAllocationsMinUnique.reduce((sum, a) => sum + a.quantity, 0);
 
 	const totalIngredients = computeTotalIngredients(foodAllocations);
 	const totalIngredientsMinAdvanced = computeTotalIngredients(foodAllocationsMinAdvanced);
+	const totalIngredientsBalanced = computeTotalIngredients(foodAllocationsBalanced);
 
 	const foodFeasible = !hasAnyRequirement(physicalReqs, physicalStatKeys) || foodAllocations.length > 0;
 	const minAdvancedFeasible = !hasAnyRequirement(physicalReqs, physicalStatKeys) || foodAllocationsMinAdvanced.length > 0;
+	const balancedFeasible = !hasAnyRequirement(physicalReqs, physicalStatKeys) || foodAllocationsBalanced.length > 0;
 	const memoryFeasible = !hasAnyRequirement(traitReqs, traitKeys) || memoryAllocations.length > 0;
 	const minUniqueFeasible = !hasAnyRequirement(traitReqs, traitKeys) || memoryAllocationsMinUnique.length > 0;
 
@@ -392,19 +520,26 @@ export function optimizeBuild(physicalReqs: PhysicalStats, traitReqs: PsychTrait
 		feasible: foodFeasible && memoryFeasible,
 		foodAllocations,
 		foodAllocationsMinAdvanced,
+		foodAllocationsBalanced,
 		memoryAllocations,
 		totalFoodItems,
 		totalFoodItemsMinAdvanced,
+		totalFoodItemsBalanced,
 		totalMemoryItems,
 		totalItems: totalFoodItems + totalMemoryItems,
 		achievedStats: computeAchievedStats(foodAllocations),
 		achievedStatsMinAdvanced: computeAchievedStats(foodAllocationsMinAdvanced),
+		achievedStatsBalanced: computeAchievedStats(foodAllocationsBalanced),
 		achievedTraits: computeAchievedTraits(memoryAllocations),
 		totalIngredients,
 		totalIngredientsMinAdvanced,
+		totalIngredientsBalanced,
 		advancedMaterials: computeAdvancedMaterials(totalIngredients),
 		advancedMaterialsMinAdvanced: computeAdvancedMaterials(totalIngredientsMinAdvanced),
+		advancedMaterialsBalanced: computeAdvancedMaterials(totalIngredientsBalanced),
+		balancedFoodTypes: foodAllocationsBalanced.length,
 		minAdvancedFeasible,
+		balancedFeasible,
 		minUniqueFeasible,
 		memoryAllocationsMinUnique,
 		totalMemoryItemsMinUnique,
