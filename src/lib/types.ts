@@ -31,9 +31,12 @@ export interface Ingredients {
 	naniteNutrient: number;
 }
 
+export type FoodRarity = 'Poor' | 'Common' | 'Uncommon' | 'Rare' | 'Artifact';
+
 export interface FoodItem {
 	name: string;
 	icon: string;
+	rarity: FoodRarity;
 	stats: PhysicalStats;
 	ingredients: Ingredients;
 }
