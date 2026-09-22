@@ -82,13 +82,20 @@ export interface MemoryAllocation extends Allocation {
 export interface OptimizationResult {
 	feasible: boolean;
 	foodAllocations: FoodAllocation[];
+	foodAllocationsMinAdvanced: FoodAllocation[];
 	memoryAllocations: MemoryAllocation[];
 	totalFoodItems: number;
+	totalFoodItemsMinAdvanced: number;
 	totalMemoryItems: number;
 	totalItems: number;
 	achievedStats: PhysicalStats;
+	achievedStatsMinAdvanced: PhysicalStats;
 	achievedTraits: PsychTraits;
 	totalIngredients: Ingredients;
+	totalIngredientsMinAdvanced: Ingredients;
+	advancedMaterials: number;
+	advancedMaterialsMinAdvanced: number;
+	minAdvancedFeasible: boolean;
 	// Fewest-unique-types variant (minimize distinct memory types)
 	minUniqueFeasible: boolean;
 	memoryAllocationsMinUnique: MemoryAllocation[];
