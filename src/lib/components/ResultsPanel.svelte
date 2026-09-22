@@ -13,22 +13,42 @@
 	} = $props();
 
 	let activeTab = $state<'optimal' | 'minUnique'>('optimal');
-	let foodTab = $state<'fewest' | 'minAdvanced'>('fewest');
+	let foodTab = $state<'fewest' | 'minAdvanced' | 'balanced'>('fewest');
 
 	const showFoodAllocations = $derived(
-		foodTab === 'minAdvanced' ? result.foodAllocationsMinAdvanced : result.foodAllocations
+		foodTab === 'balanced'
+			? result.foodAllocationsBalanced
+			: foodTab === 'minAdvanced'
+				? result.foodAllocationsMinAdvanced
+				: result.foodAllocations
 	);
 	const showFoodIngredients = $derived(
-		foodTab === 'minAdvanced' ? result.totalIngredientsMinAdvanced : result.totalIngredients
+		foodTab === 'balanced'
+			? result.totalIngredientsBalanced
+			: foodTab === 'minAdvanced'
+				? result.totalIngredientsMinAdvanced
+				: result.totalIngredients
 	);
 	const showFoodItems = $derived(
-		foodTab === 'minAdvanced' ? result.totalFoodItemsMinAdvanced : result.totalFoodItems
+		foodTab === 'balanced'
+			? result.totalFoodItemsBalanced
+			: foodTab === 'minAdvanced'
+				? result.totalFoodItemsMinAdvanced
+				: result.totalFoodItems
 	);
 	const showAchievedStats = $derived(
-		foodTab === 'minAdvanced' ? result.achievedStatsMinAdvanced : result.achievedStats
+		foodTab === 'balanced'
+			? result.achievedStatsBalanced
+			: foodTab === 'minAdvanced'
+				? result.achievedStatsMinAdvanced
+				: result.achievedStats
 	);
 	const showAdvancedMaterials = $derived(
-		foodTab === 'minAdvanced' ? result.advancedMaterialsMinAdvanced : result.advancedMaterials
+		foodTab === 'balanced'
+			? result.advancedMaterialsBalanced
+			: foodTab === 'minAdvanced'
+				? result.advancedMaterialsMinAdvanced
+				: result.advancedMaterials
 	);
 
 	const showMemoryAllocations = $derived(
@@ -94,6 +114,13 @@
 				>
 					Save Advanced ({result.advancedMaterialsMinAdvanced} rare mats)
 				</button>
+				<button
+					class="tab-btn"
+					class:active={foodTab === 'balanced'}
+					onclick={() => foodTab = 'balanced'}
+				>
+					Balanced ({result.balancedFoodTypes} types)
+				</button>
 			</div>
 
 			<div class="card">
@@ -104,6 +131,9 @@
 				<p class="strategy-note">
 					Advanced materials used: <strong>{showAdvancedMaterials}</strong>
 					(Bioregulator + Mito Amplifier + Nanite Nutrient)
+					{#if foodTab === 'balanced'}
+						<br />Balanced allows up to 25% more portions to increase variety, preferring common recipes.
+					{/if}
 				</p>
 			</div>
 		{/if}
