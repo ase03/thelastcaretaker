@@ -83,19 +83,26 @@ export interface OptimizationResult {
 	feasible: boolean;
 	foodAllocations: FoodAllocation[];
 	foodAllocationsMinAdvanced: FoodAllocation[];
+	foodAllocationsBalanced: FoodAllocation[];
 	memoryAllocations: MemoryAllocation[];
 	totalFoodItems: number;
 	totalFoodItemsMinAdvanced: number;
+	totalFoodItemsBalanced: number;
 	totalMemoryItems: number;
 	totalItems: number;
 	achievedStats: PhysicalStats;
 	achievedStatsMinAdvanced: PhysicalStats;
+	achievedStatsBalanced: PhysicalStats;
 	achievedTraits: PsychTraits;
 	totalIngredients: Ingredients;
 	totalIngredientsMinAdvanced: Ingredients;
+	totalIngredientsBalanced: Ingredients;
 	advancedMaterials: number;
 	advancedMaterialsMinAdvanced: number;
+	advancedMaterialsBalanced: number;
+	balancedFoodTypes: number;
 	minAdvancedFeasible: boolean;
+	balancedFeasible: boolean;
 	// Fewest-unique-types variant (minimize distinct memory types)
 	minUniqueFeasible: boolean;
 	memoryAllocationsMinUnique: MemoryAllocation[];
