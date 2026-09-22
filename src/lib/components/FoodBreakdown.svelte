@@ -80,7 +80,8 @@
 					<tr>
 						<td class="item-cell">
 							<img class="item-icon" src={alloc.food.icon} alt={alloc.food.name} />
-							{alloc.food.name}
+							<span class="item-name">{alloc.food.name}</span>
+							<span class="rarity rarity-{alloc.food.rarity.toLowerCase()}">{alloc.food.rarity}</span>
 						</td>
 						<td class="qty-cell">{alloc.quantity}</td>
 						<td class="stats-cell">{getStatSummary(alloc)}</td>
@@ -116,7 +117,39 @@
 	.item-cell {
 		display: flex;
 		align-items: center;
+		gap: 8px;
 		font-weight: 500;
+	}
+
+	.item-name {
+		min-width: 0;
+	}
+
+	.rarity {
+		margin-left: auto;
+		padding: 2px 6px;
+		border: 1px solid var(--border);
+		border-radius: 999px;
+		font-size: 0.68rem;
+		font-weight: 600;
+		text-transform: uppercase;
+		letter-spacing: 0.04em;
+		color: var(--text-muted);
+		background: var(--bg-secondary);
+	}
+
+	.rarity-common {
+		color: var(--text-secondary);
+	}
+
+	.rarity-uncommon {
+		color: var(--accent);
+	}
+
+	.rarity-rare,
+	.rarity-artifact {
+		color: var(--text-primary);
+		border-color: var(--border-highlight);
 	}
 
 	.qty-cell {
