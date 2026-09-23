@@ -13,11 +13,13 @@
 	} = $props();
 
 	let activeTab = $state<'optimal' | 'minUnique'>('optimal');
-	let foodTab = $state<'fewest' | 'minAdvanced' | 'balanced'>('fewest');
+	let foodTab = $state<'fewest' | 'minAdvanced' | 'saveScarce' | 'balanced'>('fewest');
 
 	const showFoodAllocations = $derived(
 		foodTab === 'balanced'
 			? result.foodAllocationsBalanced
+			: foodTab === 'saveScarce'
+				? result.foodAllocationsSaveScarce
 			: foodTab === 'minAdvanced'
 				? result.foodAllocationsMinAdvanced
 				: result.foodAllocations
@@ -25,6 +27,8 @@
 	const showFoodIngredients = $derived(
 		foodTab === 'balanced'
 			? result.totalIngredientsBalanced
+			: foodTab === 'saveScarce'
+				? result.totalIngredientsSaveScarce
 			: foodTab === 'minAdvanced'
 				? result.totalIngredientsMinAdvanced
 				: result.totalIngredients
@@ -32,6 +36,8 @@
 	const showFoodItems = $derived(
 		foodTab === 'balanced'
 			? result.totalFoodItemsBalanced
+			: foodTab === 'saveScarce'
+				? result.totalFoodItemsSaveScarce
 			: foodTab === 'minAdvanced'
 				? result.totalFoodItemsMinAdvanced
 				: result.totalFoodItems
@@ -39,6 +45,8 @@
 	const showAchievedStats = $derived(
 		foodTab === 'balanced'
 			? result.achievedStatsBalanced
+			: foodTab === 'saveScarce'
+				? result.achievedStatsSaveScarce
 			: foodTab === 'minAdvanced'
 				? result.achievedStatsMinAdvanced
 				: result.achievedStats
@@ -46,6 +54,8 @@
 	const showAdvancedMaterials = $derived(
 		foodTab === 'balanced'
 			? result.advancedMaterialsBalanced
+			: foodTab === 'saveScarce'
+				? result.advancedMaterialsSaveScarce
 			: foodTab === 'minAdvanced'
 				? result.advancedMaterialsMinAdvanced
 				: result.advancedMaterials
@@ -116,6 +126,13 @@
 				</button>
 				<button
 					class="tab-btn"
+					class:active={foodTab === 'saveScarce'}
+					onclick={() => foodTab = 'saveScarce'}
+				>
+					Save Scarce ({result.totalIngredientsSaveScarce.calcium} Ca)
+				</button>
+				<button
+					class="tab-btn"
 					class:active={foodTab === 'balanced'}
 					onclick={() => foodTab = 'balanced'}
 				>
@@ -131,6 +148,9 @@
 				<p class="strategy-note">
 					Advanced materials used: <strong>{showAdvancedMaterials}</strong>
 					(Bioregulator + Mito Amplifier + Nanite Nutrient)
+					{#if foodTab === 'saveScarce'}
+						<br />Within 25% of Fewest Food: saves calcium first, then vitamin D, then shark-derived materials, then portions.
+					{/if}
 					{#if foodTab === 'balanced'}
 						<br />Balanced allows up to 25% more portions to increase variety, preferring common recipes.
 					{/if}
