@@ -146,15 +146,20 @@ function optimizeFoodMinAdvanced(requirements: PhysicalStats): FoodAllocation[] 
 
 // Bio Dark (calcium) is hardest to replenish, Bio Light (vitamin D) is next,
 // while the advanced ingredients can be farmed from shark Bio Flesh.
-// Separate solves preserve that priority without arbitrary large weights.
+// Keep rare food within a modest budget, then use separate solves to preserve
+// the order of scarce materials, variety and portions without large weights.
 function optimizeFoodSaveScarce(requirements: PhysicalStats): FoodAllocation[] {
 	if (!hasAnyRequirement(requirements, physicalStatKeys)) return [];
 	const fewest = optimizeFood(requirements);
 	if (fewest.length === 0) return [];
 	const portionLimit = Math.ceil(fewest.reduce((sum, a) => sum + a.quantity, 0) * 1.25);
+	// Permit at most one rare recipe's worth (7 materials) beyond what the
+	// fewest-food solution already needs. Bio Flesh is renewable, but slow to farm.
+	const advancedLimit = Math.max(7, computeAdvancedMaterials(computeTotalIngredients(fewest)));
 
 	const constraints: Record<string, { min?: number; max?: number }> = {};
 	constraints.totalItems = { max: portionLimit };
+	constraints.advancedUsed = { max: advancedLimit };
 	for (const key of physicalStatKeys) {
 		if (requirements[key] > 0) constraints[key] = { min: requirements[key] };
 	}
@@ -166,21 +171,35 @@ function optimizeFoodSaveScarce(requirements: PhysicalStats): FoodAllocation[] {
 			calciumUsed: food.ingredients.calcium,
 			vitaminDUsed: food.ingredients.vitaminD,
 			advancedUsed: food.ingredients.bioregulator +
-				food.ingredients.mitoAmplifier + food.ingredients.naniteNutrient
+				food.ingredients.mitoAmplifier + food.ingredients.naniteNutrient,
+			[`scarce_max_${food.name}`]: 1,
+			[`scarce_min_${food.name}`]: 1
 		};
 		for (const key of physicalStatKeys) {
 			if (food.stats[key] > 0) variables[food.name][key] = food.stats[key];
 		}
 		ints[food.name] = 1;
+		const usedVar = `scarce_used_${food.name}`;
+		variables[usedVar] = {
+			diversityScore: food.rarity === 'Common' ? 3 :
+				food.rarity === 'Uncommon' ? 2 : food.rarity === 'Rare' ? 1 : 0,
+			[`scarce_max_${food.name}`]: -portionLimit,
+			[`scarce_min_${food.name}`]: -1,
+			[`scarce_binary_${food.name}`]: 1
+		};
+		ints[usedVar] = 1;
+		constraints[`scarce_max_${food.name}`] = { max: 0 };
+		constraints[`scarce_min_${food.name}`] = { min: 0 };
+		constraints[`scarce_binary_${food.name}`] = { max: 1 };
 	}
 
 	let result: ReturnType<typeof solver.Solve> | undefined;
-	for (const objective of ['calciumUsed', 'vitaminDUsed', 'advancedUsed', 'totalItems']) {
-		result = solver.Solve({ optimize: objective, opType: 'min' as const, constraints, variables, ints });
+	for (const objective of ['calciumUsed', 'vitaminDUsed', 'advancedUsed', 'diversityScore', 'totalItems']) {
+		result = solver.Solve({ optimize: objective, opType: objective === 'diversityScore' ? 'max' as const : 'min' as const, constraints, variables, ints });
 		if (!result.feasible) return [];
 		if (objective !== 'totalItems') {
-			const minimum = Math.round(result.result || 0);
-			constraints[objective] = { min: minimum, max: minimum };
+			const target = Math.round(result.result || 0);
+			constraints[objective] = { min: target, max: target };
 		}
 	}
 

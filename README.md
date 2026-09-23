@@ -10,7 +10,7 @@ A web-based profession build optimizer for [The Last Caretaker](https://store.st
 - **40 Professions** across 10 categories (Engineer, Military, Science, etc.), each with 4 tiers
 - **ILP Optimization** — uses integer linear programming to find the minimum items needed
 - **Food Optimization** — computes optimal food items for physical stats (Weight, Height, Life Exp., Strength, Intellect)
-- **Save Scarce food strategy** — allows up to 25% more portions than Fewest Food, then minimizes calcium (Bio Dark), vitamin D (Bio Light), shark-derived advanced materials (Bio Flesh), and portions in that order
+- **Save Scarce food strategy** — allows up to 25% more portions than Fewest Food and caps shark-derived materials at the larger of 7 or their Fewest Food use. It then minimizes calcium (Bio Dark), vitamin D (Bio Light), and advanced materials (Bio Flesh), prefers varied common recipes, and finally minimizes portions
 - **Memory Optimization** — computes optimal memory items for psychological traits (Adaptability, Creativity, Communication, etc.)
 - **Dual Memory Strategies** — tab toggle between:
   - **Fewest Items** — minimizes total memory item count

@@ -149,7 +149,7 @@
 					Advanced materials used: <strong>{showAdvancedMaterials}</strong>
 					(Bioregulator + Mito Amplifier + Nanite Nutrient)
 					{#if foodTab === 'saveScarce'}
-						<br />Within 25% of Fewest Food: saves calcium first, then vitamin D, then shark-derived materials, then portions.
+						<br />Within 25% of Fewest Food and a limited rare-material budget: saves calcium, then vitamin D and shark-derived materials; prefers varied common food before minimizing portions.
 					{/if}
 					{#if foodTab === 'balanced'}
 						<br />Balanced allows up to 25% more portions to increase variety, preferring common recipes.
