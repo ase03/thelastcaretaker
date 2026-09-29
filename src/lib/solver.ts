@@ -427,73 +427,99 @@ function optimizeMemories(requirements: PsychTraits): MemoryAllocation[] {
 	return allocations.sort((a, b) => b.quantity - a.quantity);
 }
 
-// Minimize the number of distinct memory types used (big-M formulation)
+// Minimize distinct memory types first, then minimize the number of items
+// among solutions that use that minimum number of types.
 function optimizeMemoriesMinUnique(requirements: PsychTraits): MemoryAllocation[] {
 	if (!hasAnyRequirement(requirements, traitKeys)) {
 		return [];
 	}
 
 	const BIG_M = 200;
-	const constraints: Record<string, { min?: number; max?: number }> = {};
-	const variables: Record<string, Record<string, number>> = {};
-	const ints: Record<string, number> = {};
 
-	// Trait requirement constraints
-	for (const key of traitKeys) {
-		if (requirements[key] > 0) {
-			constraints[key] = { min: requirements[key] };
-		}
-	}
+	const buildModel = (uniqueTypesTarget?: number) => {
+		const constraints: Record<string, { min?: number; max?: number }> = {};
+		const variables: Record<string, Record<string, number>> = {};
+		const ints: Record<string, number> = {};
 
-	for (const memory of memoryItems) {
-		const hasUsefulTrait = traitKeys.some(k => memory.traits[k] > 0 && requirements[k] > 0);
-		if (!hasUsefulTrait) continue;
-
-		const qtyVar = memory.name;
-		const usedVar = `used_${memory.name}`;
-		const linkConstraint = `link_${memory.name}`;
-		const binaryConstraint = `bin_${memory.name}`;
-
-		// qty variable: contributes traits, linked to used indicator
-		variables[qtyVar] = { [linkConstraint]: 1 };
 		for (const key of traitKeys) {
-			if (memory.traits[key] > 0) {
-				variables[qtyVar][key] = memory.traits[key];
+			if (requirements[key] > 0) {
+				constraints[key] = { min: requirements[key] };
 			}
 		}
-		ints[qtyVar] = 1;
 
-		// used indicator variable: binary (0 or 1), counted in objective
-		variables[usedVar] = {
-			uniqueTypes: 1,
-			[linkConstraint]: -BIG_M,
-			[binaryConstraint]: 1
-		};
-		ints[usedVar] = 1;
+		if (uniqueTypesTarget !== undefined) {
+			constraints.uniqueTypes = { min: uniqueTypesTarget, max: uniqueTypesTarget };
+		}
 
-		// qty <= M * used  →  qty - M*used <= 0
-		constraints[linkConstraint] = { max: 0 };
-		// used <= 1 (binary)
-		constraints[binaryConstraint] = { max: 1 };
-	}
+		for (const memory of memoryItems) {
+			const hasUsefulTrait = traitKeys.some(k => memory.traits[k] > 0 && requirements[k] > 0);
+			if (!hasUsefulTrait) continue;
 
-	const model = {
-		optimize: 'uniqueTypes',
-		opType: 'min' as const,
-		constraints,
-		variables,
-		ints
+			const qtyVar = memory.name;
+			const usedVar = `used_${memory.name}`;
+			const maxLink = `max_link_${memory.name}`;
+			const minLink = `min_link_${memory.name}`;
+			const binaryConstraint = `bin_${memory.name}`;
+
+			// Quantity contributes traits and counts toward the secondary objective.
+			variables[qtyVar] = {
+				totalItems: 1,
+				[maxLink]: 1,
+				[minLink]: 1
+			};
+			for (const key of traitKeys) {
+				if (memory.traits[key] > 0) {
+					variables[qtyVar][key] = memory.traits[key];
+				}
+			}
+			ints[qtyVar] = 1;
+
+			// Binary-ish used indicator: qty <= M*used and qty >= used.
+			variables[usedVar] = {
+				uniqueTypes: 1,
+				[maxLink]: -BIG_M,
+				[minLink]: -1,
+				[binaryConstraint]: 1
+			};
+			ints[usedVar] = 1;
+
+			constraints[maxLink] = { max: 0 };
+			constraints[minLink] = { min: 0 };
+			constraints[binaryConstraint] = { max: 1 };
+		}
+
+		return { constraints, variables, ints };
 	};
 
-	const result = solver.Solve(model);
+	// Stage 1: minimum number of distinct memory types.
+	const firstModel = buildModel();
+	const uniqueResult = solver.Solve({
+		optimize: 'uniqueTypes',
+		opType: 'min' as const,
+		...firstModel
+	});
 
-	if (!result.feasible) {
+	if (!uniqueResult.feasible) {
+		return [];
+	}
+
+	const minimumUniqueTypes = Math.round(uniqueResult.result || 0);
+
+	// Stage 2: with that number of types fixed, use the fewest actual items.
+	const secondModel = buildModel(minimumUniqueTypes);
+	const itemResult = solver.Solve({
+		optimize: 'totalItems',
+		opType: 'min' as const,
+		...secondModel
+	});
+
+	if (!itemResult.feasible) {
 		return [];
 	}
 
 	const allocations: MemoryAllocation[] = [];
 	for (const memory of memoryItems) {
-		const qty = Math.round(result[memory.name] || 0);
+		const qty = Math.round(itemResult[memory.name] || 0);
 		if (qty > 0) {
 			allocations.push({ item: memory.name, quantity: qty, memory });
 		}
