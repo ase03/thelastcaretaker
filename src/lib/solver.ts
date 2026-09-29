@@ -20,40 +20,79 @@ function optimizeFood(requirements: PhysicalStats): FoodAllocation[] {
 		return [];
 	}
 
-	const constraints: Record<string, { min: number }> = {};
-	for (const key of physicalStatKeys) {
-		if (requirements[key] > 0) {
-			constraints[key] = { min: requirements[key] };
-		}
-	}
+	const buildModel = (scarceTarget?: number, itemTarget?: number) => {
+		const constraints: Record<string, { min?: number; max?: number }> = {};
 
-	const variables: Record<string, Record<string, number>> = {};
-	const ints: Record<string, number> = {};
-
-	for (const food of foodItems) {
-		const varName = food.name;
-		variables[varName] = { totalItems: 1 };
 		for (const key of physicalStatKeys) {
-			if (food.stats[key] > 0) {
-				variables[varName][key] = food.stats[key];
+			if (requirements[key] > 0) {
+				constraints[key] = { min: requirements[key] };
 			}
 		}
-		ints[varName] = 1;
-	}
 
-	const model = {
-		optimize: 'totalItems',
-		opType: 'min' as const,
-		constraints,
-		variables,
-		ints
+		if (scarceTarget !== undefined) {
+			constraints.scarceMaterials = { min: scarceTarget, max: scarceTarget };
+		}
+		if (itemTarget !== undefined) {
+			constraints.totalItems = { min: itemTarget, max: itemTarget };
+		}
+
+		const variables: Record<string, Record<string, number>> = {};
+		const ints: Record<string, number> = {};
+
+		for (const food of foodItems) {
+			variables[food.name] = {
+				totalItems: 1,
+				// Bio Dark -> Calcium, Bio Light -> Vitamin D.
+				// These are the genuinely scarce inputs, so preserve them first.
+				scarceMaterials: food.ingredients.calcium + food.ingredients.vitaminD,
+				// Bio Flesh-derived ingredients are renewable; use them only as a tie-breaker.
+				advancedMaterials:
+					food.ingredients.bioregulator +
+					food.ingredients.mitoAmplifier +
+					food.ingredients.naniteNutrient
+			};
+
+			for (const key of physicalStatKeys) {
+				if (food.stats[key] > 0) {
+					variables[food.name][key] = food.stats[key];
+				}
+			}
+			ints[food.name] = 1;
+		}
+
+		return { constraints, variables, ints };
 	};
 
-	const result = solver.Solve(model);
+	// 1) Preserve Bio Light / Bio Dark above everything else.
+	const scarceModel = buildModel();
+	const scarceResult = solver.Solve({
+		optimize: 'scarceMaterials',
+		opType: 'min' as const,
+		...scarceModel
+	});
+	if (!scarceResult.feasible) return [];
 
-	if (!result.feasible) {
-		return [];
-	}
+	const minimumScarce = Math.round(scarceResult.result || 0);
+
+	// 2) Among equally scarce builds, use as few food portions as possible.
+	const itemModel = buildModel(minimumScarce);
+	const itemResult = solver.Solve({
+		optimize: 'totalItems',
+		opType: 'min' as const,
+		...itemModel
+	});
+	if (!itemResult.feasible) return [];
+
+	const minimumItems = Math.round(itemResult.result || 0);
+
+	// 3) Final tie-breaker: spend the least shark-derived Bio Flesh material.
+	const advancedModel = buildModel(minimumScarce, minimumItems);
+	const advancedResult = solver.Solve({
+		optimize: 'advancedMaterials',
+		opType: 'min' as const,
+		...advancedModel
+	});
+	const result = advancedResult.feasible ? advancedResult : itemResult;
 
 	const allocations: FoodAllocation[] = [];
 	for (const food of foodItems) {
