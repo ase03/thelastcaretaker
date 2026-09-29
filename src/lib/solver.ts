@@ -599,59 +599,28 @@ function computeAdvancedMaterials(ingredients: Ingredients): number {
 
 export function optimizeBuild(physicalReqs: PhysicalStats, traitReqs: PsychTraits): OptimizationResult {
 	const foodAllocations = optimizeFood(physicalReqs);
-	const foodAllocationsMinAdvanced = optimizeFoodMinAdvanced(physicalReqs);
-	const foodAllocationsSaveScarce = optimizeFoodSaveScarce(physicalReqs);
-	const foodAllocationsBalanced = optimizeFoodBalanced(physicalReqs);
 	const memoryAllocations = optimizeMemories(traitReqs);
 	const memoryAllocationsMinUnique = optimizeMemoriesMinUnique(traitReqs);
 
 	const totalFoodItems = foodAllocations.reduce((sum, a) => sum + a.quantity, 0);
-	const totalFoodItemsMinAdvanced = foodAllocationsMinAdvanced.reduce((sum, a) => sum + a.quantity, 0);
-	const totalFoodItemsSaveScarce = foodAllocationsSaveScarce.reduce((sum, a) => sum + a.quantity, 0);
-	const totalFoodItemsBalanced = foodAllocationsBalanced.reduce((sum, a) => sum + a.quantity, 0);
 	const totalMemoryItems = memoryAllocations.reduce((sum, a) => sum + a.quantity, 0);
 	const totalMemoryItemsMinUnique = memoryAllocationsMinUnique.reduce((sum, a) => sum + a.quantity, 0);
-
 	const totalIngredients = computeTotalIngredients(foodAllocations);
-	const totalIngredientsMinAdvanced = computeTotalIngredients(foodAllocationsMinAdvanced);
-	const totalIngredientsSaveScarce = computeTotalIngredients(foodAllocationsSaveScarce);
-	const totalIngredientsBalanced = computeTotalIngredients(foodAllocationsBalanced);
 
 	const foodFeasible = !hasAnyRequirement(physicalReqs, physicalStatKeys) || foodAllocations.length > 0;
-	const minAdvancedFeasible = !hasAnyRequirement(physicalReqs, physicalStatKeys) || foodAllocationsMinAdvanced.length > 0;
-	const balancedFeasible = !hasAnyRequirement(physicalReqs, physicalStatKeys) || foodAllocationsBalanced.length > 0;
 	const memoryFeasible = !hasAnyRequirement(traitReqs, traitKeys) || memoryAllocations.length > 0;
 	const minUniqueFeasible = !hasAnyRequirement(traitReqs, traitKeys) || memoryAllocationsMinUnique.length > 0;
 
 	return {
 		feasible: foodFeasible && memoryFeasible,
 		foodAllocations,
-		foodAllocationsMinAdvanced,
-		foodAllocationsSaveScarce,
-		foodAllocationsBalanced,
 		memoryAllocations,
 		totalFoodItems,
-		totalFoodItemsMinAdvanced,
-		totalFoodItemsSaveScarce,
-		totalFoodItemsBalanced,
 		totalMemoryItems,
 		totalItems: totalFoodItems + totalMemoryItems,
 		achievedStats: computeAchievedStats(foodAllocations),
-		achievedStatsMinAdvanced: computeAchievedStats(foodAllocationsMinAdvanced),
-		achievedStatsSaveScarce: computeAchievedStats(foodAllocationsSaveScarce),
-		achievedStatsBalanced: computeAchievedStats(foodAllocationsBalanced),
 		achievedTraits: computeAchievedTraits(memoryAllocations),
 		totalIngredients,
-		totalIngredientsMinAdvanced,
-		totalIngredientsSaveScarce,
-		totalIngredientsBalanced,
-		advancedMaterials: computeAdvancedMaterials(totalIngredients),
-		advancedMaterialsMinAdvanced: computeAdvancedMaterials(totalIngredientsMinAdvanced),
-		advancedMaterialsSaveScarce: computeAdvancedMaterials(totalIngredientsSaveScarce),
-		advancedMaterialsBalanced: computeAdvancedMaterials(totalIngredientsBalanced),
-		balancedFoodTypes: foodAllocationsBalanced.length,
-		minAdvancedFeasible,
-		balancedFeasible,
 		minUniqueFeasible,
 		memoryAllocationsMinUnique,
 		totalMemoryItemsMinUnique,
