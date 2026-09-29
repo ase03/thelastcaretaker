@@ -13,53 +13,11 @@
 	} = $props();
 
 	let activeTab = $state<'optimal' | 'minUnique'>('optimal');
-	let foodTab = $state<'fewest' | 'minAdvanced' | 'saveScarce' | 'balanced'>('fewest');
 
-	const showFoodAllocations = $derived(
-		foodTab === 'balanced'
-			? result.foodAllocationsBalanced
-			: foodTab === 'saveScarce'
-				? result.foodAllocationsSaveScarce
-			: foodTab === 'minAdvanced'
-				? result.foodAllocationsMinAdvanced
-				: result.foodAllocations
-	);
-	const showFoodIngredients = $derived(
-		foodTab === 'balanced'
-			? result.totalIngredientsBalanced
-			: foodTab === 'saveScarce'
-				? result.totalIngredientsSaveScarce
-			: foodTab === 'minAdvanced'
-				? result.totalIngredientsMinAdvanced
-				: result.totalIngredients
-	);
-	const showFoodItems = $derived(
-		foodTab === 'balanced'
-			? result.totalFoodItemsBalanced
-			: foodTab === 'saveScarce'
-				? result.totalFoodItemsSaveScarce
-			: foodTab === 'minAdvanced'
-				? result.totalFoodItemsMinAdvanced
-				: result.totalFoodItems
-	);
-	const showAchievedStats = $derived(
-		foodTab === 'balanced'
-			? result.achievedStatsBalanced
-			: foodTab === 'saveScarce'
-				? result.achievedStatsSaveScarce
-			: foodTab === 'minAdvanced'
-				? result.achievedStatsMinAdvanced
-				: result.achievedStats
-	);
-	const showAdvancedMaterials = $derived(
-		foodTab === 'balanced'
-			? result.advancedMaterialsBalanced
-			: foodTab === 'saveScarce'
-				? result.advancedMaterialsSaveScarce
-			: foodTab === 'minAdvanced'
-				? result.advancedMaterialsMinAdvanced
-				: result.advancedMaterials
-	);
+	const showFoodAllocations = $derived(result.foodAllocations);
+	const showFoodIngredients = $derived(result.totalIngredients);
+	const showFoodItems = $derived(result.totalFoodItems);
+	const showAchievedStats = $derived(result.achievedStats);
 
 	const showMemoryAllocations = $derived(
 		activeTab === 'minUnique' ? result.memoryAllocationsMinUnique : result.memoryAllocations
@@ -109,51 +67,14 @@
 		</div>
 
 		{#if showFoodAllocations.length > 0}
-			<div class="tab-bar">
-				<button
-					class="tab-btn"
-					class:active={foodTab === 'fewest'}
-					onclick={() => foodTab = 'fewest'}
-				>
-					Fewest Food ({result.totalFoodItems})
-				</button>
-				<button
-					class="tab-btn"
-					class:active={foodTab === 'minAdvanced'}
-					onclick={() => foodTab = 'minAdvanced'}
-				>
-					Save Advanced ({result.advancedMaterialsMinAdvanced} rare mats)
-				</button>
-				<button
-					class="tab-btn"
-					class:active={foodTab === 'saveScarce'}
-					onclick={() => foodTab = 'saveScarce'}
-				>
-					Save Scarce ({result.totalIngredientsSaveScarce.calcium} Ca)
-				</button>
-				<button
-					class="tab-btn"
-					class:active={foodTab === 'balanced'}
-					onclick={() => foodTab = 'balanced'}
-				>
-					Balanced ({result.balancedFoodTypes} types)
-				</button>
-			</div>
-
 			<div class="card">
 				<FoodBreakdown
 					allocations={showFoodAllocations}
 					totalIngredients={showFoodIngredients}
 				/>
 				<p class="strategy-note">
-					Advanced materials used: <strong>{showAdvancedMaterials}</strong>
-					(Bioregulator + Mito Amplifier + Nanite Nutrient)
-					{#if foodTab === 'saveScarce'}
-						<br />Within 25% of Fewest Food and a limited rare-material budget: saves calcium, then vitamin D and shark-derived materials; prefers varied common food before minimizing portions.
-					{/if}
-					{#if foodTab === 'balanced'}
-						<br />Balanced allows up to 25% more portions to increase variety, preferring common recipes.
-					{/if}
+					Food is optimized to minimize <strong>Bio Light / Bio Dark</strong>
+					(Vitamin D + Calcium) first, then portions, then Bio Flesh-derived materials.
 				</p>
 			</div>
 		{/if}
