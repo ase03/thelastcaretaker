@@ -23,9 +23,19 @@ function optimizeFood(requirements: PhysicalStats): FoodAllocation[] {
 	const buildModel = (scarceTarget?: number, itemTarget?: number) => {
 		const constraints: Record<string, { min?: number; max?: number }> = {};
 
+		// Lazarus growth has universal minimum body requirements in addition
+		// to the selected profession's physical requirements.
+		const effectiveRequirements: PhysicalStats = {
+			weight: Math.max(requirements.weight, 20),
+			height: Math.max(requirements.height, 30),
+			lifeExp: Math.max(requirements.lifeExp, 10),
+			strength: requirements.strength,
+			intellect: requirements.intellect
+		};
+
 		for (const key of physicalStatKeys) {
-			if (requirements[key] > 0) {
-				constraints[key] = { min: requirements[key] };
+			if (effectiveRequirements[key] > 0) {
+				constraints[key] = { min: effectiveRequirements[key] };
 			}
 		}
 
