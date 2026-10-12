@@ -7,5 +7,5 @@ export function heightTone(z: number | null): 'below' | 'above' | 'neutral' | 'u
 }
 export function heightColor(z: number | null): string {
  const tone = heightTone(z);
- return tone === 'below' ? '#379fad' : tone === 'above' ? '#83e7ee' : '#47dce9';
+ return tone === 'below' ? '#2d8795' : tone === 'above' ? '#a2f0f4' : '#47dce9';
 }
