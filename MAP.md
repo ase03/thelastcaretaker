@@ -72,3 +72,31 @@ application dependency tree; no unrelated dependency upgrades were applied.
 No geographic raster, game geometry or public POI catalog is supplied. The local
 known set works now; future geometry and unknown locations require separate data
 and disclosure decisions. There is no blocking data dependency for the grid MVP.
+
+## Permanent POI labels
+
+Names are visible beside projected markers without selecting a POI. Text uses
+13px system-ui, a dark backdrop and text shadow. Marker size and raw XYZ are
+unchanged. Screen-space layout tries right, left, above-right and below-right;
+conflicting secondary labels are suppressed, but every marker remains available.
+Selected labels have first placement priority and remain visible. Labels avoid
+other marker centres, the toolbar and bottom readout. Long text is ellipsized;
+the complete name remains available via the button title and POI list.
+
+Hovering either dot or label highlights both without selecting or centering.
+Selected yellow styling takes precedence over hover. Text and dot share one
+button hit area; text placement does not depend on hover, preventing flicker.
+
+The checkout now lives in the permanent source directory. Private local imports
+belong in the laboratory's `User-Exports/Map` directory outside the repository.
+Paths are user-selected at import or supplied to tests via `TLC_MAP_LOCAL_JSON`;
+no workstation-specific absolute path is embedded in the application.
+
+Chromium verification with the same 50 POI includes Full HD and 390px viewport,
+permanent names, hover enter/leave, yellow selection, overlapping marker selection,
+search, focus, pan, cursor zoom, 1cm grid, and the existing application routes.
+Compared with the previous 18.0 / 16.6 / 16.6 ms mean frame intervals, the first
+labelled run measured 20.4 / 16.6 / 16.6 ms at overview / 8 / 16 zoom steps.
+This small local sample indicates extra layout work at overview; it is not a
+hardware-independent performance claim. Type checking still reports only the
+47 pre-existing solver errors; map files have no diagnostics.

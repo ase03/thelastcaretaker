@@ -18,11 +18,34 @@ test('map and existing routes',async({page})=>{
 test('local known POI and interaction timing',async({page})=>{
  test.skip(!process.env.TLC_MAP_LOCAL_JSON,'Optional private data check');
  await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();await page.locator('input[type=file]').setInputFiles(process.env.TLC_MAP_LOCAL_JSON);await expect(page.locator('.list button')).toHaveCount(50);
+  await expect.poll(()=>page.locator('.poi-label:not(.suppressed)').count()).toBeGreaterThan(10);
+ await page.screenshot({path:'test-results/map-labels-fullhd.png'});
+ await page.getByRole('textbox',{name:'Поиск POI'}).fill('Lazarus');await expect(page.locator('.list button')).toHaveCount(1);await page.getByRole('textbox',{name:'Поиск POI'}).fill('');
  const measurements=[];
  for(const zooms of [0,8,16]){
  await page.getByRole('button',{name:'Общий вид',exact:true}).click();for(let i=0;i<zooms;i++)await page.getByRole('button',{name:'Увеличить',exact:true}).click();
  const result=await page.evaluate(async()=>{const host=document.querySelector('.viewport'),times=[];let previous=performance.now();for(let i=0;i<90;i++){await new Promise(r=>requestAnimationFrame(r));const now=performance.now();times.push(now-previous);previous=now;host.dispatchEvent(new WheelEvent('wheel',{deltaY:i%2?1:-1,bubbles:true,cancelable:true,clientX:800,clientY:400}));}times.sort((a,b)=>a-b);return {meanMs:times.reduce((a,b)=>a+b)/times.length,p95Ms:times[Math.floor(times.length*.95)]};});
  measurements.push({zooms,...result});
  }
- console.log('50 POI continuous wheel benchmark',JSON.stringify(measurements));await page.setViewportSize({width:390,height:844});await expect(page.locator('canvas')).toBeVisible();await page.screenshot({path:'test-results/map-mobile.png'});
+ console.log('50 POI continuous wheel benchmark',JSON.stringify(measurements));await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Общий вид',exact:true}).click();await expect(page.locator('canvas')).toBeVisible();await expect.poll(()=>page.locator('.poi-label:not(.suppressed)').count()).toBeGreaterThan(0);await page.screenshot({path:'test-results/map-mobile.png'});
+ for(let i=0;i<6;i++)await page.getByRole('button',{name:'Уменьшить',exact:true}).click();
+ await expect(page.locator('.marker')).toHaveCount(50);
+ const boxes=await page.locator('.poi-label:not(.suppressed)').evaluateAll(labels=>labels.map(el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};}));
+ for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){const a=boxes[i],b=boxes[j];expect(a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y).toBe(false);}
+});
+
+test('permanent labels, hover and selected priority',async({page})=>{
+ await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();
+ const pois=[0,1,2].map(i=>({id:`label-test-${i}`,name:`Synthetic label ${i}`,world:{x:i===2?300:0,y:0,z:null},source:'test',gameBuild:'test',knowledge:'known',accuracy:'synthetic',layer:'poi',visibility:'local'}));
+ await page.locator('input[type=file]').setInputFiles({name:'labels.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schemaVersion:1,units:'UE-cm',pois}))});
+ const marker=page.locator('.marker').filter({hasText:'Synthetic label 0'}),label=marker.locator('.poi-label');
+ await expect(label).toBeVisible();await expect(page.locator('aside section')).toHaveCount(0);
+ const normalColor=await marker.evaluate(el=>getComputedStyle(el).color);
+ await label.hover();const hoverColor=await marker.evaluate(el=>getComputedStyle(el).color);expect(hoverColor).not.toBe(normalColor);await expect(page.locator('aside section')).toHaveCount(0);
+ await page.mouse.move(350,250);await expect.poll(()=>marker.evaluate(el=>getComputedStyle(el).color)).toBe(normalColor);
+ await label.click();await expect(marker).toHaveClass(/chosen/);const yellow=await marker.evaluate(el=>getComputedStyle(el).color);await marker.hover();expect(await marker.evaluate(el=>getComputedStyle(el).color)).toBe(yellow);
+ await page.locator('.list button').filter({hasText:'Synthetic label 1'}).click();await expect(page.locator('.chosen .poi-label')).toBeVisible();
+ await page.getByRole('button',{name:'Центрировать',exact:true}).click();
+ const viewport=await page.locator('.viewport').boundingBox();await expect.poll(async()=>{const point=await page.locator('.chosen').boundingBox();return Math.abs(point.x+point.width/2-viewport.x-viewport.width/2);}).toBeLessThan(1);
+ await page.getByRole('checkbox',{name:'Показать слой POI'}).uncheck();await expect(page.locator('.marker')).toHaveCount(0);
 });
