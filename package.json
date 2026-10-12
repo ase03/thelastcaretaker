@@ -7,7 +7,7 @@
     "dev": "vite dev",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test tests/map.test.mjs",
+    "test": "node --experimental-strip-types --test tests/map.test.mjs tests/snapshot.test.mjs",
     "test:ui": "playwright test"
   },
   "devDependencies": {

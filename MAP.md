@@ -165,3 +165,65 @@ band is neutral. This visual tolerance never changes the real height or its
 projection. Null Z keeps the neutral colour and hollow diamond, not a claim of
 zero elevation. Yellow selection and bright hover take precedence over height.
 The 3D sidebar legend states the thresholds. 2D colours and JSON are unchanged.
+
+
+## MapSnapshot v1: one-file save projection
+
+Import a private `MapSnapshot` JSON with schemaVersion 1 and UE-cm units using
+this same file picker. Legacy known-pois JSON remains supported. File limit is
+16 MB, with at most 1000 POI, 20000 occurrences and 2000 groups. Validation is
+transactional: invalid JSON, duplicate identities, inconsistent bounds/counts,
+hidden POI assertions, lost or duplicated assignments leave the current import
+intact. Valid replacement clears selection, groups and local projection, resets
+finds to hidden and replaces all POI. Camera transitions finish before applying
+an import, including imports triggered during a pending local entry.
+
+The export contract and command are documented in the separate TLC Hub checkout
+at `docs/design/map-snapshot-v1.md` and its JSON Schema. This site never accepts
+raw saves. Current exporter supports only the fingerprint-matching reviewed
+Update 6 snapshot through existing artifacts, not arbitrary saves.
+
+Metadata shows timestamp, compatible build, partial coverage warnings and spoiler
+status. `safe` exports contain no candidate coordinates. `with-candidates` JSON
+already discloses them: hiding markers only affects presentation. Nothing is
+uploaded or automatically persisted. Never put a private file into static/build
+or Git; import from LAB/User-Exports/Map instead.
+
+Finds start off. Enable “Показать находки” to show 38 decorated existing POI and
+47 independent diamond markers for the reviewed dataset (50 total known POI,
+1028 occurrences / 1058 units, 85 groups). A POI group adds no duplicate locator
+or label. Marker titles provide Memory/Artifact/Rare stack counts, total stacks
+and units, and candidate provenance. Group list also exposes the same summary
+and selection command. Existing POI height tones and marker sizes are retained.
+
+Select a group/associated POI, then “Показать область в 3D”. The local scene uses
+only the group's explicit occurrence keys. Initial perspective camera fits
+actual item XYZ bounds with padding, including height range; original numbers
+remain immutable and are rebased before GPU conversion. Vertical stems project
+to the group's minimum known Z (arbitrary reference, not sea level). Null Z remains
+unknown, has no asserted stem and uses a hollow diamond at the reference plane.
+Memory is #55F56C, Artifact #FFE34A, Rare #339CFF; selection stays yellow. Labels
+use existing overlap suppression; every item also remains selectable in the list.
+
+Item cards show definition/name, category, quality, quantity, raw XYZ, metres,
+coordinate source, confidence, ownership and provenance. Names are not invented.
+Left drag pans, right drag rotates, wheel zooms; controls and category labels
+remain local. “Вернуться к карте” recreates the original 2D/3D engine and restores
+its exact camera centre/scale or origin/position/orbit target plus selected POI.
+This differs from ordinary global 2D/3D switches, which retain their existing
+focus/overview behavior. Render resources are disposed on every transition.
+
+Checks added: relational parser tests; Chromium one-file import, default spoiler
+hiding, summaries, positive/negative local heights, item selection, camera return
+from both modes, invalid-import transaction and valid replacement from local 3D;
+optional TLC_MAP_SNAPSHOT exercises the real private file and narrow viewport.
+Run `npm test`, `npm run build`, `npm run test:ui`. Existing type checking still
+reports 47 errors solely in unchanged solver.ts; no map diagnostics remain.
+
+
+MapSnapshot acceptance run: 10 coordinate/import unit tests passed; all 9 Chromium
+checks passed with both private fixture variables set (including the 57-occurrence
+largest local group). Production build passed. The 50-POI/85-group idle frame
+sample was 16.66 ms mean; the existing continuous-wheel 50-POI samples were
+22.68/16.63/16.59 ms in 2D (overview/8/16 steps), and 17.04 ms in 3D.
+These are local browser scheduling samples, not GPU timings or a general FPS claim.

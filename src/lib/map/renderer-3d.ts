@@ -26,6 +26,7 @@ export function createMap3D(host: HTMLElement, update: (f: Frame) => void, curso
     pointMaterial.onBeforeCompile = shader => { shader.fragmentShader = shader.fragmentShader.replace('#include <clipping_planes_fragment>', '#include <clipping_planes_fragment>\nif (length(gl_PointCoord - vec2(0.5)) > 0.5) discard;'); };
     const grid = new THREE.LineSegments(new THREE.BufferGeometry(), gridMaterial), stems = new THREE.LineSegments(new THREE.BufferGeometry(), stemMaterial), points = new THREE.Points(new THREE.BufferGeometry(), pointMaterial);
     scene.add(grid, stems, points);
+    let customColors: Record<string,string> = {}, referenceZ=0;
     let pois: POI[] = [], selected: string | undefined, hovered: string | undefined, visible = true, dirty = true, disposed = false, raf = 0;
     let width = Math.max(1, host.clientWidth), height = Math.max(1, host.clientHeight);
     const changed = () => { dirty = true; };
@@ -64,7 +65,7 @@ export function createMap3D(host: HTMLElement, update: (f: Frame) => void, curso
         camera.updateProjectionMatrix();
         camera.lookAt(controls.target);
         camera.updateMatrixWorld();
-        const span = distance * 100 * 2 * Math.tan(THREE.MathUtils.degToRad(22.5)) * width / height, step = gridStep(span, width), extent = Math.max(step * 10, span * 1.5), v: number[] = [], baseY = -origin.z / 100;
+        const span = distance * 100 * 2 * Math.tan(THREE.MathUtils.degToRad(22.5)) * width / height, step = gridStep(span, width), extent = Math.max(step * 10, span * 1.5), v: number[] = [], baseY = (referenceZ-origin.z) / 100;
         for (let x = Math.ceil((origin.x - extent) / step) * step; x <= origin.x + extent; x += step) {
             const sx = (x - origin.x) / 100;
             v.push(sx, baseY, -extent / 100, sx, baseY, extent / 100);
@@ -76,7 +77,7 @@ export function createMap3D(host: HTMLElement, update: (f: Frame) => void, curso
         replace(grid, v);
         const positions: number[] = [], colors: number[] = [], vertical: number[] = [], markers: Frame['markers'] = [];
         for (const poi of pois) {
-            const s = worldToScene(poi.world, origin), position = new THREE.Vector3(s.x, s.y ?? baseY, s.z), color = new THREE.Color(poi.id === selected ? 0xffd66c : poi.id === hovered ? 0xa5f7ff : heightColor(poi.world.z));
+            const s = worldToScene(poi.world, origin), position = new THREE.Vector3(s.x, s.y ?? baseY, s.z), color = new THREE.Color(poi.id === selected ? 0xffd66c : poi.id === hovered ? 0xa5f7ff : (customColors[poi.id] ?? heightColor(poi.world.z)));
             positions.push(position.x, position.y, position.z);
             colors.push(color.r, color.g, color.b);
             if (poi.world.z !== null && poi.world.z !== 0)
@@ -91,7 +92,7 @@ export function createMap3D(host: HTMLElement, update: (f: Frame) => void, curso
         renderer.render(scene, camera);
         update({ markers, labels: [], step: distanceLabel(step), span, cx: origin.x, cy: origin.y, fps: 0 });
     }
-    const pointer = (e: PointerEvent) => { const r = host.getBoundingClientRect(), ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2((e.clientX - r.left) / width * 2 - 1, 1 - (e.clientY - r.top) / height * 2), camera); const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), origin.z / 100), new THREE.Vector3()); if (hit) {
+    const pointer = (e: PointerEvent) => { const r = host.getBoundingClientRect(), ray = new THREE.Raycaster(); ray.setFromCamera(new THREE.Vector2((e.clientX - r.left) / width * 2 - 1, 1 - (e.clientY - r.top) / height * 2), camera); const hit = ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), (origin.z-referenceZ) / 100), new THREE.Vector3()); if (hit) {
         const p = sceneToWorld({ x: hit.x, y: hit.y, z: hit.z }, origin);
         cursor({ x: p.x, y: p.y });
     }
@@ -118,6 +119,10 @@ export function createMap3D(host: HTMLElement, update: (f: Frame) => void, curso
     host.addEventListener('pointerleave', leave);
     overview();
     draw();
-    return { setPOIs(p: POI[]) { pois = p; overview(); }, overview, focus(p: POI) { const s = worldToScene(p.world, origin), target = new THREE.Vector3(s.x, s.y ?? -origin.z / 100, s.z), offset = camera.position.clone().sub(controls.target); controls.target.copy(target); camera.position.copy(target).add(offset); controls.update(); dirty = true; }, zoom(factor: number) { const offset = camera.position.clone().sub(controls.target).multiplyScalar(factor); offset.setLength(Math.max(controls.minDistance, Math.min(controls.maxDistance, offset.length()))); camera.position.copy(controls.target).add(offset); controls.update(); dirty = true; }, setAppearance(id: string | undefined, hover: string | undefined, show: boolean) { selected = id; hovered = hover; visible = show; dirty = true; }, dispose() { disposed = true; cancelAnimationFrame(raf); resize.disconnect(); controls.removeEventListener('change', changed); controls.dispose(); host.removeEventListener('wheel', overlayWheel); host.removeEventListener('pointermove', pointer); host.removeEventListener('pointerleave', leave); for (const object of [grid, stems, points])
+    return { getCamera(){return {origin:{...origin},position:camera.position.toArray(),target:controls.target.toArray()};},
+        restoreCamera(state:{origin:{x:number;y:number;z:number};position:number[];target:number[]}){Object.assign(origin,state.origin);camera.position.fromArray(state.position);controls.target.fromArray(state.target);controls.update();dirty=true;},
+        setColors(colors:Record<string,string>){customColors=colors;dirty=true;},
+        setReferenceZ(z:number){referenceZ=z;dirty=true;},
+        setPOIs(p: POI[],preserve=false) { pois = p; if(preserve)dirty=true;else overview(); }, overview, focus(p: POI) { const s = worldToScene(p.world, origin), target = new THREE.Vector3(s.x, s.y ?? -origin.z / 100, s.z), offset = camera.position.clone().sub(controls.target); controls.target.copy(target); camera.position.copy(target).add(offset); controls.update(); dirty = true; }, zoom(factor: number) { const offset = camera.position.clone().sub(controls.target).multiplyScalar(factor); offset.setLength(Math.max(controls.minDistance, Math.min(controls.maxDistance, offset.length()))); camera.position.copy(controls.target).add(offset); controls.update(); dirty = true; }, setAppearance(id: string | undefined, hover: string | undefined, show: boolean) { selected = id; hovered = hover; visible = show; dirty = true; }, dispose() { disposed = true; cancelAnimationFrame(raf); resize.disconnect(); controls.removeEventListener('change', changed); controls.dispose(); host.removeEventListener('wheel', overlayWheel); host.removeEventListener('pointermove', pointer); host.removeEventListener('pointerleave', leave); for (const object of [grid, stems, points])
             object.geometry.dispose(); gridMaterial.dispose(); stemMaterial.dispose(); pointMaterial.dispose(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); } };
 }
