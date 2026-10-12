@@ -156,3 +156,12 @@ Verified after the controls change: production build, existing 2D/3D UI checks
 and a dedicated Chromium regression for left-pan, right-orbit, cursor anchoring
 at an off-centre marker, wheel over a label, label selection and mode-specific
 help. Continuous-wheel 3D with 50 local POI remains about 17 ms mean per frame.
+
+### Subtle height tones (3D only)
+
+The shared GPU/DOM marker palette uses three related cyan shades: below −1 m is
+slightly darker, above +1 m is slightly lighter, and the inclusive ±1 m display
+band is neutral. This visual tolerance never changes the real height or its
+projection. Null Z keeps the neutral colour and hollow diamond, not a claim of
+zero elevation. Yellow selection and bright hover take precedence over height.
+The 3D sidebar legend states the thresholds. 2D colours and JSON are unchanged.

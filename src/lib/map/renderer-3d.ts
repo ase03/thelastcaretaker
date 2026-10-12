@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { worldToScene, sceneToWorld, gridStep, distanceLabel, LIMIT, type POI } from './coordinates';
+import { heightColor } from './appearance';
 import type { Frame } from './renderer';
 export function createMap3D(host: HTMLElement, update: (f: Frame) => void, cursor: (p: {
     x: number;
@@ -75,7 +76,7 @@ export function createMap3D(host: HTMLElement, update: (f: Frame) => void, curso
         replace(grid, v);
         const positions: number[] = [], colors: number[] = [], vertical: number[] = [], markers: Frame['markers'] = [];
         for (const poi of pois) {
-            const s = worldToScene(poi.world, origin), position = new THREE.Vector3(s.x, s.y ?? baseY, s.z), color = new THREE.Color(poi.id === selected ? 0xffd66c : poi.id === hovered ? 0xa5f7ff : 0x47dce9);
+            const s = worldToScene(poi.world, origin), position = new THREE.Vector3(s.x, s.y ?? baseY, s.z), color = new THREE.Color(poi.id === selected ? 0xffd66c : poi.id === hovered ? 0xa5f7ff : heightColor(poi.world.z));
             positions.push(position.x, position.y, position.z);
             colors.push(color.r, color.g, color.b);
             if (poi.world.z !== null && poi.world.z !== 0)

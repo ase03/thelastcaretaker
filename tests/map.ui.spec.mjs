@@ -56,8 +56,13 @@ test('3D height projection, orbit, pan, focus and return to 2D',async({page})=>{
  await page.locator('input[type=file]').setInputFiles({name:'3d.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schemaVersion:1,units:'UE-cm',pois}))});
  await page.getByRole('button',{name:'3D',exact:true}).click();await expect(page.getByRole('button',{name:'3D',exact:true})).toHaveAttribute('aria-pressed','true');await expect(page.locator('canvas')).toHaveCount(1);await expect(page.locator('.marker')).toHaveCount(3);
  const upper=page.getByRole('button',{name:'Synthetic upper',exact:true}).last(),lower=page.getByRole('button',{name:'Synthetic lower',exact:true}).last();const up=await upper.boundingBox(),lo=await lower.boundingBox();expect(Math.abs(up.y-lo.y)).toBeGreaterThan(20);
- await expect(page.locator('.marker').filter({hasText:'Synthetic unknown'})).toContainText('◇');
- await upper.hover();await expect(page.locator('aside section')).toHaveCount(0);await upper.click();await expect(page.locator('.chosen')).toHaveCount(1);await page.getByRole('button',{name:'Центрировать',exact:true}).click();const view=await page.locator('.viewport').boundingBox();
+  await expect(page.locator('.marker').filter({hasText:'Synthetic unknown'})).toContainText('◇');
+ await expect(page.getByLabel('Высота относительно Z=0')).toContainText('От −1 до +1 м');
+ await page.mouse.move(10,10);
+ const tones=await page.locator('.marker').evaluateAll(markers=>Object.fromEntries(markers.map(el=>[el.dataset.height,getComputedStyle(el).color])));
+ const brightness=color=>{const [r,g,b]=color.match(/\d+/g).map(Number);return .2126*r+.7152*g+.0722*b;};
+ expect(brightness(tones.above)).toBeGreaterThan(brightness(tones.unknown));expect(brightness(tones.below)).toBeLessThan(brightness(tones.unknown));
+ await upper.hover();await expect(page.locator('aside section')).toHaveCount(0);await upper.click();await expect(page.locator('.chosen')).toHaveCount(1);expect(await upper.evaluate(el=>getComputedStyle(el).color)).toBe('rgb(255, 214, 108)');await page.getByRole('button',{name:'Центрировать',exact:true}).click();const view=await page.locator('.viewport').boundingBox();
  await expect.poll(async()=>{const r=await page.locator('.chosen').boundingBox();return Math.hypot(r.x+r.width/2-view.x-view.width/2,r.y+r.height/2-view.y-view.height/2);}).toBeLessThan(1);
  await page.getByRole('button',{name:'Общий вид',exact:true}).click();const before=await lower.boundingBox();
  await page.mouse.move(view.x+view.width*.7,view.y+view.height*.65);await page.mouse.down({button:'right'});await page.mouse.move(view.x+view.width*.7+150,view.y+view.height*.65+80,{steps:20});await page.mouse.up({button:'right'});await expect.poll(async()=>{const r=await lower.boundingBox();return Math.abs(r.y-before.y);}).toBeGreaterThan(5);
