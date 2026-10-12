@@ -9,7 +9,7 @@ const intersects = (a: Rect, b: Rect) =>
 export function placeLabels(markers: Frame['markers'], selectedId: string | undefined,
  width: number, height: number, measure: (name: string) => number) {
  const occupied: Rect[] = [
-  { left: width - 220, top: 0, width: 220, height: 58 },
+  { left: width - 340, top: 0, width: 340, height: 58 },
   { left: 0, top: height - 65, width, height: 65 }
  ];
  const placements = new Map<string, { visible: boolean; dx: number; dy: number; width: number }>();

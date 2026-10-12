@@ -48,7 +48,7 @@ The renderer draws only when dirty and disposes GPU resources, observers and inp
 handlers on navigation. Marker projections use double precision before DOM pixels.
 Overlapping glyphs remain distinct records and can be selected through the list.
 Shared World/SpatialRecord types retain XYZ/provenance/visibility for future layers;
-geometry extraction, tilt, height filtering and perspective rendering are deferred.
+geometry extraction and height filtering are deferred. The basic perspective projector is described below.
 
 ## Checks
 
@@ -100,3 +100,43 @@ labelled run measured 20.4 / 16.6 / 16.6 ms at overview / 8 / 16 zoom steps.
 This small local sample indicates extra layout work at overview; it is not a
 hardware-independent performance claim. Type checking still reports only the
 47 pre-existing solver errors; map files have no diagnostics.
+
+
+## Basic 3D projector
+
+Use the 2D / 3D buttons on `/map`; 2D remains the default. Import the same local
+JSON in either mode. Records, search and selection stay in page memory when
+switching. A newly entered mode starts at overview, or focuses the selected POI;
+previous camera orientation/zoom is not retained. No backend or JSON changes.
+
+3D loads a separate client-only renderer with PerspectiveCamera / OrbitControls:
+left drag rotates/tilts; right drag pans; wheel zooms. Touch supports one-finger
+orbit and two-finger pan/zoom. Controls use damping; focus is an immediate shift
+of camera and orbit target preserving viewing direction and distance.
+
+The same UE-cm coordinate adapter supplies GPU point positions and DOM label
+projections. Known Z controls height, with a thin vertical stem to world Z=0.
+Negative heights remain below the plane. Null Z projects onto Z=0 and uses a
+hollow diamond hit marker; the underlying immutable record stays null. This is
+an arbitrary reference plane, not a sea-level claim. The grid has no occluding
+surface, so negative-Z POI remain visible. Selection is yellow, hover is cyan/
+white, and layer visibility controls GPU points, stems and DOM labels together.
+
+Origin rebasing translates camera and orbit target together on the CPU before
+building Float32 buffers. Grid density follows camera distance; original records
+never change. Adaptive near/far clipping protects zoom precision. Both renderers
+release their frame callbacks, resources and event handlers on mode switch and
+page exit. 3D cursor X/Y are ray intersections with the reference plane, not POI
+picking or terrain coordinates. The 3D span readout estimates width at orbit focus.
+
+No geometry, textures, elevation exaggeration, height filtering or animated focus
+transition is supplied. At world overview, small genuine height differences may
+be subtle; zoom toward a POI to inspect them. The measured 3D continuous-wheel
+mean frame interval with 50 local POI was 17.1 ms (p95 18 ms) in headless Chromium
+on this machine; this is a local scheduling sample, not a general FPS guarantee.
+
+Verification: production build; 8 coordinate tests; 5 Chromium checks covering
+existing routes and 2D, local imports, 3D orbit/pan/zoom, distinct positive/negative
+heights at identical XY, unknown height, hover, selected focus, repeated switching,
+Full HD and narrow viewport, and real 50-POI performance. Existing solver type
+errors remain outside this change. Private campaign JSON is excluded from Git/build.

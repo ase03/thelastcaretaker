@@ -49,3 +49,27 @@ test('permanent labels, hover and selected priority',async({page})=>{
  const viewport=await page.locator('.viewport').boundingBox();await expect.poll(async()=>{const point=await page.locator('.chosen').boundingBox();return Math.abs(point.x+point.width/2-viewport.x-viewport.width/2);}).toBeLessThan(1);
  await page.getByRole('checkbox',{name:'Показать слой POI'}).uncheck();await expect(page.locator('.marker')).toHaveCount(0);
 });
+
+test('3D height projection, orbit, pan, focus and return to 2D',async({page})=>{
+ const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();
+ const pois=[{id:'upper',name:'Synthetic upper',world:{x:10000000,y:-10000000,z:10000}},{id:'lower',name:'Synthetic lower',world:{x:10000000,y:-10000000,z:-10000}},{id:'unknown',name:'Synthetic unknown',world:{x:10000000,y:-10000000,z:null}}].map(p=>({...p,source:'test',gameBuild:'test',knowledge:'known',accuracy:'synthetic',layer:'poi',visibility:'local'}));
+ await page.locator('input[type=file]').setInputFiles({name:'3d.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schemaVersion:1,units:'UE-cm',pois}))});
+ await page.getByRole('button',{name:'3D',exact:true}).click();await expect(page.getByRole('button',{name:'3D',exact:true})).toHaveAttribute('aria-pressed','true');await expect(page.locator('canvas')).toHaveCount(1);await expect(page.locator('.marker')).toHaveCount(3);
+ const upper=page.getByRole('button',{name:'Synthetic upper',exact:true}).last(),lower=page.getByRole('button',{name:'Synthetic lower',exact:true}).last();const up=await upper.boundingBox(),lo=await lower.boundingBox();expect(Math.abs(up.y-lo.y)).toBeGreaterThan(20);
+ await expect(page.locator('.marker').filter({hasText:'Synthetic unknown'})).toContainText('◇');
+ await upper.hover();await expect(page.locator('aside section')).toHaveCount(0);await upper.click();await expect(page.locator('.chosen')).toHaveCount(1);await page.getByRole('button',{name:'Центрировать',exact:true}).click();const view=await page.locator('.viewport').boundingBox();
+ await expect.poll(async()=>{const r=await page.locator('.chosen').boundingBox();return Math.hypot(r.x+r.width/2-view.x-view.width/2,r.y+r.height/2-view.y-view.height/2);}).toBeLessThan(1);
+ await page.getByRole('button',{name:'Общий вид',exact:true}).click();const before=await lower.boundingBox();
+ await page.mouse.move(view.x+view.width*.7,view.y+view.height*.65);await page.mouse.down();await page.mouse.move(view.x+view.width*.7+150,view.y+view.height*.65+80,{steps:20});await page.mouse.up();await expect.poll(async()=>{const r=await lower.boundingBox();return Math.abs(r.y-before.y);}).toBeGreaterThan(5);
+ const readout=await page.locator('.readout').innerText();await page.mouse.wheel(0,-200);await expect.poll(()=>page.locator('.readout').innerText()).not.toBe(readout);
+ await page.mouse.down({button:'right'});await page.mouse.move(view.x+view.width*.6,view.y+view.height*.6,{steps:10});await page.mouse.up({button:'right'});
+ await page.screenshot({path:'test-results/map-3d-synthetic.png'});
+ await page.getByRole('button',{name:'2D',exact:true}).click();await expect(page.locator('canvas')).toHaveCount(1);await expect(page.locator('.list button')).toHaveCount(3);await expect(page.locator('.chosen')).toHaveCount(1);await expect(page.locator('section')).toContainText('Z: 100,00 м');
+ for(let i=0;i<4;i++){await page.getByRole('button',{name:'3D',exact:true}).click();await page.getByRole('button',{name:'2D',exact:true}).click();}await page.goto('/inventory');expect(errors).toEqual([]);
+});
+
+test('3D with 50 local POI performance',async({page})=>{
+ test.skip(!process.env.TLC_MAP_LOCAL_JSON,'Optional private data check');await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();await page.locator('input[type=file]').setInputFiles(process.env.TLC_MAP_LOCAL_JSON);await page.getByRole('button',{name:'3D',exact:true}).click();await expect(page.locator('.list button')).toHaveCount(50);await expect.poll(()=>page.locator('.marker').count()).toBeGreaterThan(40);
+ console.log('3D continuous wheel 50 POI',await page.evaluate(async()=>{const canvas=document.querySelector('canvas'),times=[];let previous=performance.now();for(let i=0;i<90;i++){await new Promise(r=>requestAnimationFrame(r));const now=performance.now();times.push(now-previous);previous=now;canvas.dispatchEvent(new WheelEvent('wheel',{deltaY:i%2?1:-1,bubbles:true,cancelable:true,clientX:800,clientY:400}));}times.sort((a,b)=>a-b);return {meanMs:times.reduce((a,b)=>a+b)/times.length,p95Ms:times[85]};}));
+ await page.screenshot({path:'test-results/map-3d-fullhd.png'});await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Общий вид',exact:true}).click();await expect(page.locator('canvas')).toBeVisible();await page.screenshot({path:'test-results/map-3d-mobile.png'});
+});
