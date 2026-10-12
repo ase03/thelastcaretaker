@@ -26,7 +26,7 @@
 			<span class="nav-current">Build Optimizer</span>
 			<span class="nav-sep">|</span>
 			<a href="/inventory">Inventory Mode</a>
-		</nav>
+		<span class="nav-sep">|</span><a href="/map">TLC Hub Map</a></nav>
 	</header>
 
 	<main>

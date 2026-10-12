@@ -50,7 +50,7 @@
 			<a href="/">Build Optimizer</a>
 			<span class="nav-sep">|</span>
 			<span class="nav-current">Inventory Mode</span>
-		</nav>
+		<span class="nav-sep">|</span><a href="/map">TLC Hub Map</a></nav>
 	</header>
 
 	<main>
