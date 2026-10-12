@@ -110,7 +110,7 @@ switching. A newly entered mode starts at overview, or focuses the selected POI;
 previous camera orientation/zoom is not retained. No backend or JSON changes.
 
 3D loads a separate client-only renderer with PerspectiveCamera / OrbitControls:
-left drag rotates/tilts; right drag pans; wheel zooms. Touch supports one-finger
+left drag pans; right drag rotates/tilts; wheel zooms toward the cursor. Touch supports one-finger
 orbit and two-finger pan/zoom. Controls use damping; focus is an immediate shift
 of camera and orbit target preserving viewing direction and distance.
 
@@ -140,3 +140,19 @@ existing routes and 2D, local imports, 3D orbit/pan/zoom, distinct positive/nega
 heights at identical XY, unknown height, hover, selected focus, repeated switching,
 Full HD and narrow viewport, and real 50-POI performance. Existing solver type
 errors remain outside this change. Private campaign JSON is excluded from Git/build.
+
+### Mouse controls and wheel over labels
+
+The sidebar always shows a mode-specific control legend. In 3D, left drag pans,
+right drag orbits, and wheel/trackpad zoom uses OrbitControls zoomToCursor.
+Marker/label wheel events are forwarded to the canvas controls with their
+position, delta mode and modifier keys retained. Canvas events are not forwarded
+again; the forwarding listener is removed on mode exit. Label click/hover remain
+unchanged. Touch keeps one-finger orbit / two-finger pan and zoom. Zoom buttons
+still zoom around the orbit centre. In perspective mode cursor zoom follows the
+camera ray and orbit focus plane; it does not snap to a POI's individual height.
+
+Verified after the controls change: production build, existing 2D/3D UI checks
+and a dedicated Chromium regression for left-pan, right-orbit, cursor anchoring
+at an off-centre marker, wheel over a label, label selection and mode-specific
+help. Continuous-wheel 3D with 50 local POI remains about 17 ms mean per frame.

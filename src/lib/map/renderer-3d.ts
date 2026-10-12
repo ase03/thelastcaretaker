@@ -12,6 +12,9 @@ export function createMap3D(host: HTMLElement, update: (f: Frame) => void, curso
     host.prepend(renderer.domElement);
     const scene = new THREE.Scene(), camera = new THREE.PerspectiveCamera(45, 1, .001, 1e7), controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
+    controls.mouseButtons.LEFT = THREE.MOUSE.PAN;
+    controls.mouseButtons.RIGHT = THREE.MOUSE.ROTATE;
+    controls.zoomToCursor = true;
     controls.dampingFactor = .12;
     controls.minDistance = .05;
     controls.maxDistance = 1e7;
@@ -94,10 +97,26 @@ export function createMap3D(host: HTMLElement, update: (f: Frame) => void, curso
     else
         cursor(null); };
     const leave = () => cursor(null);
+    // Labels stay clickable; route their wheel events through the same controls
+    // as the canvas, preserving the cursor position and trackpad modifiers.
+    const overlayWheel = (event: WheelEvent) => {
+        if (!(event.target instanceof Element) || !event.target.closest('.marker')) return;
+        event.preventDefault();
+        event.stopPropagation();
+        renderer.domElement.dispatchEvent(new WheelEvent('wheel', {
+            bubbles: true, cancelable: true,
+            clientX: event.clientX, clientY: event.clientY,
+            deltaX: event.deltaX, deltaY: event.deltaY, deltaZ: event.deltaZ,
+            deltaMode: event.deltaMode,
+            ctrlKey: event.ctrlKey, shiftKey: event.shiftKey,
+            altKey: event.altKey, metaKey: event.metaKey
+        }));
+    };
+    host.addEventListener('wheel', overlayWheel, { passive: false });
     host.addEventListener('pointermove', pointer);
     host.addEventListener('pointerleave', leave);
     overview();
     draw();
-    return { setPOIs(p: POI[]) { pois = p; overview(); }, overview, focus(p: POI) { const s = worldToScene(p.world, origin), target = new THREE.Vector3(s.x, s.y ?? -origin.z / 100, s.z), offset = camera.position.clone().sub(controls.target); controls.target.copy(target); camera.position.copy(target).add(offset); controls.update(); dirty = true; }, zoom(factor: number) { const offset = camera.position.clone().sub(controls.target).multiplyScalar(factor); offset.setLength(Math.max(controls.minDistance, Math.min(controls.maxDistance, offset.length()))); camera.position.copy(controls.target).add(offset); controls.update(); dirty = true; }, setAppearance(id: string | undefined, hover: string | undefined, show: boolean) { selected = id; hovered = hover; visible = show; dirty = true; }, dispose() { disposed = true; cancelAnimationFrame(raf); resize.disconnect(); controls.removeEventListener('change', changed); controls.dispose(); host.removeEventListener('pointermove', pointer); host.removeEventListener('pointerleave', leave); for (const object of [grid, stems, points])
+    return { setPOIs(p: POI[]) { pois = p; overview(); }, overview, focus(p: POI) { const s = worldToScene(p.world, origin), target = new THREE.Vector3(s.x, s.y ?? -origin.z / 100, s.z), offset = camera.position.clone().sub(controls.target); controls.target.copy(target); camera.position.copy(target).add(offset); controls.update(); dirty = true; }, zoom(factor: number) { const offset = camera.position.clone().sub(controls.target).multiplyScalar(factor); offset.setLength(Math.max(controls.minDistance, Math.min(controls.maxDistance, offset.length()))); camera.position.copy(controls.target).add(offset); controls.update(); dirty = true; }, setAppearance(id: string | undefined, hover: string | undefined, show: boolean) { selected = id; hovered = hover; visible = show; dirty = true; }, dispose() { disposed = true; cancelAnimationFrame(raf); resize.disconnect(); controls.removeEventListener('change', changed); controls.dispose(); host.removeEventListener('wheel', overlayWheel); host.removeEventListener('pointermove', pointer); host.removeEventListener('pointerleave', leave); for (const object of [grid, stems, points])
             object.geometry.dispose(); gridMaterial.dispose(); stemMaterial.dispose(); pointMaterial.dispose(); renderer.dispose(); renderer.forceContextLoss(); renderer.domElement.remove(); } };
 }
