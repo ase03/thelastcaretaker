@@ -1,12 +1,14 @@
+import {fullFromPois} from './snapshot-fixture.mjs';
 import {test,expect} from '@playwright/test';
 test('map and existing routes',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
  await page.goto('/');await expect(page.getByRole('heading',{name:'The Last Caretaker',exact:true})).toBeVisible();
+ await page.getByLabel('Category',{exact:true}).selectOption({index:1});await page.getByLabel('Profession',{exact:true}).selectOption({index:1});await expect(page.locator('.results')).toBeVisible();
  await page.goto('/inventory');await expect(page.locator('main')).toBeVisible();
  await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();await expect(page.getByText('Данные не загружены.',{exact:false})).toBeVisible();
  const fixture={schemaVersion:1,units:'UE-cm',pois:[{id:'synthetic-test',name:'Synthetic test point',world:{x:1599700.4,y:-378025.88,z:null},source:'Synthetic test only',gameBuild:'test',knowledge:'known',accuracy:'synthetic',layer:'poi',visibility:'local'}]};
- await page.locator('input[type=file]').setInputFiles({name:'test.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(fixture))});
- await page.locator('.list button').click();await expect(page.locator('section')).toContainText('15 997,004');await expect(page.locator('section')).toContainText('неизвестна');await page.getByRole('button',{name:'Центрировать',exact:true}).click();
+ await page.locator('input[type=file]').setInputFiles({name:'test.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(fullFromPois(fixture.pois)))});
+ await page.locator('.list button').click();await expect(page.locator('section')).toContainText('15 997,004');await expect(page.locator('section')).toContainText('Z: 0,00 м');await page.getByRole('button',{name:'Центрировать',exact:true}).click();
  const marker=await page.locator('.marker').boundingBox(),view=await page.locator('.viewport').boundingBox();expect(Math.abs(marker.x+marker.width/2-view.x-view.width/2)).toBeLessThan(1);
  const before=await page.locator('.readout').innerText();await page.mouse.move(view.x+view.width/2,view.y+view.height/2);await page.mouse.wheel(0,-500);await expect.poll(()=>page.locator('.readout').innerText()).not.toBe(before);
  await page.mouse.move(view.x+view.width/2,view.y+view.height/2+70);await page.mouse.down();await page.mouse.move(view.x+view.width/2+100,view.y+view.height/2+70,{steps:10});await page.mouse.up();await expect.poll(async()=> (await page.locator('.marker').boundingBox()).x).not.toBe(marker.x);
@@ -15,29 +17,11 @@ test('map and existing routes',async({page})=>{
  await page.screenshot({path:'test-results/map.png'});await page.goto('/');expect(errors).toEqual([]);
 });
 
-test('local known POI and interaction timing',async({page})=>{
- test.skip(!process.env.TLC_MAP_LOCAL_JSON,'Optional private data check');
- await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();await page.locator('input[type=file]').setInputFiles(process.env.TLC_MAP_LOCAL_JSON);await expect(page.locator('.list button')).toHaveCount(50);
-  await expect.poll(()=>page.locator('.poi-label:not(.suppressed)').count()).toBeGreaterThan(10);
- await page.screenshot({path:'test-results/map-labels-fullhd.png'});
- await page.getByRole('textbox',{name:'Поиск POI'}).fill('Lazarus');await expect(page.locator('.list button')).toHaveCount(1);await page.getByRole('textbox',{name:'Поиск POI'}).fill('');
- const measurements=[];
- for(const zooms of [0,8,16]){
- await page.getByRole('button',{name:'Общий вид',exact:true}).click();for(let i=0;i<zooms;i++)await page.getByRole('button',{name:'Увеличить',exact:true}).click();
- const result=await page.evaluate(async()=>{const host=document.querySelector('.viewport'),times=[];let previous=performance.now();for(let i=0;i<90;i++){await new Promise(r=>requestAnimationFrame(r));const now=performance.now();times.push(now-previous);previous=now;host.dispatchEvent(new WheelEvent('wheel',{deltaY:i%2?1:-1,bubbles:true,cancelable:true,clientX:800,clientY:400}));}times.sort((a,b)=>a-b);return {meanMs:times.reduce((a,b)=>a+b)/times.length,p95Ms:times[Math.floor(times.length*.95)]};});
- measurements.push({zooms,...result});
- }
- console.log('50 POI continuous wheel benchmark',JSON.stringify(measurements));await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Общий вид',exact:true}).click();await expect(page.locator('canvas')).toBeVisible();await expect.poll(()=>page.locator('.poi-label:not(.suppressed)').count()).toBeGreaterThan(0);await page.screenshot({path:'test-results/map-mobile.png'});
- for(let i=0;i<6;i++)await page.getByRole('button',{name:'Уменьшить',exact:true}).click();
- await expect(page.locator('.marker')).toHaveCount(50);
- const boxes=await page.locator('.poi-label:not(.suppressed)').evaluateAll(labels=>labels.map(el=>{const r=el.getBoundingClientRect();return {x:r.x,y:r.y,w:r.width,h:r.height};}));
- for(let i=0;i<boxes.length;i++)for(let j=i+1;j<boxes.length;j++){const a=boxes[i],b=boxes[j];expect(a.x<b.x+b.w&&a.x+a.w>b.x&&a.y<b.y+b.h&&a.y+a.h>b.y).toBe(false);}
-});
 
 test('permanent labels, hover and selected priority',async({page})=>{
  await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();
  const pois=[0,1,2].map(i=>({id:`label-test-${i}`,name:`Synthetic label ${i}`,world:{x:i===2?300:0,y:0,z:null},source:'test',gameBuild:'test',knowledge:'known',accuracy:'synthetic',layer:'poi',visibility:'local'}));
- await page.locator('input[type=file]').setInputFiles({name:'labels.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schemaVersion:1,units:'UE-cm',pois}))});
+ await page.locator('input[type=file]').setInputFiles({name:'labels.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(fullFromPois(pois)))});
  const marker=page.locator('.marker').filter({hasText:'Synthetic label 0'}),label=marker.locator('.poi-label');
  await expect(label).toBeVisible();await expect(page.locator('aside section')).toHaveCount(0);
  const normalColor=await marker.evaluate(el=>getComputedStyle(el).color);
@@ -52,16 +36,15 @@ test('permanent labels, hover and selected priority',async({page})=>{
 
 test('3D height projection, orbit, pan, focus and return to 2D',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();
- const pois=[{id:'upper',name:'Synthetic upper',world:{x:10000000,y:-10000000,z:10000}},{id:'lower',name:'Synthetic lower',world:{x:10000000,y:-10000000,z:-10000}},{id:'unknown',name:'Synthetic unknown',world:{x:10000000,y:-10000000,z:null}}].map(p=>({...p,source:'test',gameBuild:'test',knowledge:'known',accuracy:'synthetic',layer:'poi',visibility:'local'}));
- await page.locator('input[type=file]').setInputFiles({name:'3d.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schemaVersion:1,units:'UE-cm',pois}))});
+ const pois=[{id:'upper',name:'Synthetic upper',world:{x:10000000,y:-10000000,z:10000}},{id:'lower',name:'Synthetic lower',world:{x:10000000,y:-10000000,z:-10000}},{id:'unknown',name:'Synthetic reference',world:{x:10000000,y:-10000000,z:0}}].map(p=>({...p,source:'test',gameBuild:'test',knowledge:'known',accuracy:'synthetic',layer:'poi',visibility:'local'}));
+ await page.locator('input[type=file]').setInputFiles({name:'3d.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(fullFromPois(pois)))});
  await page.getByRole('button',{name:'3D',exact:true}).click();await expect(page.getByRole('button',{name:'3D',exact:true})).toHaveAttribute('aria-pressed','true');await expect(page.locator('canvas')).toHaveCount(1);await expect(page.locator('.marker')).toHaveCount(3);
  const upper=page.getByRole('button',{name:'Synthetic upper',exact:true}).last(),lower=page.getByRole('button',{name:'Synthetic lower',exact:true}).last();const up=await upper.boundingBox(),lo=await lower.boundingBox();expect(Math.abs(up.y-lo.y)).toBeGreaterThan(20);
-  await expect(page.locator('.marker').filter({hasText:'Synthetic unknown'})).toContainText('◇');
  await expect(page.getByLabel('Высота относительно Z=0')).toContainText('От −1 до +1 м');
  await page.mouse.move(10,10);
  const tones=await page.locator('.marker').evaluateAll(markers=>Object.fromEntries(markers.map(el=>[el.dataset.height,getComputedStyle(el).color])));
  const brightness=color=>{const [r,g,b]=color.match(/\d+/g).map(Number);return .2126*r+.7152*g+.0722*b;};
- expect(brightness(tones.above)).toBeGreaterThan(brightness(tones.unknown));expect(brightness(tones.below)).toBeLessThan(brightness(tones.unknown));
+ expect(brightness(tones.above)).toBeGreaterThan(brightness(tones.neutral));expect(brightness(tones.below)).toBeLessThan(brightness(tones.neutral));
  await upper.hover();await expect(page.locator('aside section')).toHaveCount(0);await upper.click();await expect(page.locator('.chosen')).toHaveCount(1);expect(await upper.evaluate(el=>getComputedStyle(el).color)).toBe('rgb(255, 214, 108)');await page.getByRole('button',{name:'Центрировать',exact:true}).click();const view=await page.locator('.viewport').boundingBox();
  await expect.poll(async()=>{const r=await page.locator('.chosen').boundingBox();return Math.hypot(r.x+r.width/2-view.x-view.width/2,r.y+r.height/2-view.y-view.height/2);}).toBeLessThan(1);
  await page.getByRole('button',{name:'Общий вид',exact:true}).click();const before=await lower.boundingBox();
@@ -73,17 +56,12 @@ test('3D height projection, orbit, pan, focus and return to 2D',async({page})=>{
  for(let i=0;i<4;i++){await page.getByRole('button',{name:'3D',exact:true}).click();await page.getByRole('button',{name:'2D',exact:true}).click();}await page.goto('/inventory');expect(errors).toEqual([]);
 });
 
-test('3D with 50 local POI performance',async({page})=>{
- test.skip(!process.env.TLC_MAP_LOCAL_JSON,'Optional private data check');await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();await page.locator('input[type=file]').setInputFiles(process.env.TLC_MAP_LOCAL_JSON);await page.getByRole('button',{name:'3D',exact:true}).click();await expect(page.locator('.list button')).toHaveCount(50);await expect.poll(()=>page.locator('.marker').count()).toBeGreaterThan(40);
- console.log('3D continuous wheel 50 POI',await page.evaluate(async()=>{const canvas=document.querySelector('canvas'),times=[];let previous=performance.now();for(let i=0;i<90;i++){await new Promise(r=>requestAnimationFrame(r));const now=performance.now();times.push(now-previous);previous=now;canvas.dispatchEvent(new WheelEvent('wheel',{deltaY:i%2?1:-1,bubbles:true,cancelable:true,clientX:800,clientY:400}));}times.sort((a,b)=>a-b);return {meanMs:times.reduce((a,b)=>a+b)/times.length,p95Ms:times[85]};}));
- await page.screenshot({path:'test-results/map-3d-fullhd.png'});await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Общий вид',exact:true}).click();await expect(page.locator('canvas')).toBeVisible();await page.screenshot({path:'test-results/map-3d-mobile.png'});
-});
 
 test('3D map mouse controls and wheel over labels',async({page})=>{
  const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('console',msg=>{if(msg.type()==='error')errors.push(msg.text());});
  await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();
  const pois=[{id:'a',name:'Anchor A',world:{x:-10000,y:0,z:0}},{id:'b',name:'Anchor B',world:{x:10000,y:0,z:0}}].map(p=>({...p,source:'test',gameBuild:'test',knowledge:'known',accuracy:'synthetic',layer:'poi',visibility:'local'}));
- await page.locator('input[type=file]').setInputFiles({name:'controls.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify({schemaVersion:1,units:'UE-cm',pois}))});await page.getByRole('button',{name:'3D',exact:true}).click();
+ await page.locator('input[type=file]').setInputFiles({name:'controls.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(fullFromPois(pois)))});await page.getByRole('button',{name:'3D',exact:true}).click();
  await expect(page.getByLabel('Управление картой')).toContainText('Правая кнопка + drag');
  const a=page.locator('.marker').filter({hasText:'Anchor A'}),b=page.locator('.marker').filter({hasText:'Anchor B'}),view=await page.locator('.viewport').boundingBox();
  const centre=async locator=>{const box=await locator.boundingBox();return {x:box.x+box.width/2,y:box.y+box.height/2};};

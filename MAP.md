@@ -1,229 +1,59 @@
-# TLC Hub Map prototype
+# TLC Hub Map
 
-Existing checkout, branch `local`; static SvelteKit / Docker configuration retained.
+The existing static SvelteKit app provides `/map`, the build optimizer and inventory calculator.
+Run `npm run dev`; build with `npm run build`, preview with `npm run preview`.
+No deployment changes are required.
 
-Run `npm install`, `npm run dev`, open http://localhost:5173/map.
-Production: `npm run build`; `npm run preview` (http://localhost:4173/map).
-Publish from the existing server checkout with `docker compose up -d --build` after separately authorized transfer of the commit. No push/deploy performed here.
+## Local Full v1 import
 
-## Local import
+Select the official `full.json` with the file picker. The only accepted root contract is
+`schema: "tlc-full-snapshot/1"`, `representation: "full"`. Scanner, experimental
+MapSnapshot/POI exports and other versions are rejected. No Scanner file is required.
+SHA-256 verification uses browser WebCrypto (HTTPS or localhost required).
+The complete accepted document and its exact JSON text remain in page memory, separately
+from the derived map projection. Reload discards them. Nothing is uploaded or stored in
+localStorage. Invalid imports leave the previously accepted snapshot, view and selection intact.
 
-JSON object: `schemaVersion: 1`, `units: "UE-cm"`, `pois: [...]`.
-Each POI needs `id`, `name`, `world: {x, y, z}`, `source`, `gameBuild`,
-`knowledge: "known"`, `accuracy`, `layer: "poi"`, `visibility: "local"`.
-Coordinates are finite numbers in raw UE centimetres, Z is a number or null.
-IDs must be unique. Maximum 1000 records / 2 MB. Import is transactional;
-invalid input leaves previous records intact. No network upload or persistence.
-The importer validates structure, not the truth of the supplied knowledge assertion.
-Never import a hidden catalog for public distribution.
+`full-snapshot.ts` validates the source and identity metadata, units/coordinate contract,
+retained evidence and explicit nulls, stable IDs (SHA-256 of UTF-8 sourceRecord), unique
+object/POI identities, finite admissible coordinates, qualification and applicable coverage
+counts. Optional additional keys are retained without interpretation. Large integers supplied
+as strings remain strings. Unsafe numeric integers are rejected instead of silently rounded.
+Quantities in the display projection use BigInt, including aggregate totals.
+The coordinate safety bound ±1e12 cm protects renderer arithmetic; it is not a game boundary.
+There are no legacy record-count or 16 MB import limits.
 
-`tools/export-known-pois.mjs` is an offline adapter for the existing reviewed
-50-record TLC Hub anchor set, not a save parser. It verifies the known root-locator
-provenance and strips internal paths and all unrelated fields. Missing localized
-names use the exact asset identifier rather than inventing a display name.
-Canonical IDs identify the build and full world locator component path; they are
-locator identities, not an asserted cross-build asset identity.
+`projectFull` in `snapshot.ts` creates the derived display view. Only POIs with serialized
+discovery and static root world-coordinate evidence are known POIs. Object markers require
+validated xyz, world-space spatial-cell corroboration, confirmed selective-contract confidence,
+positive units and the producer's scannerCategory. Category and player-storage exclusions
+are checked locally. Producer eligibility also encapsulates its procedural-buoy exclusions;
+the browser does not rederive missing containment evidence. Raw coordinateObservation values
+never authorize a marker. The reader does not infer ownership or decode retained raw states.
 
-Run with Node 22.18+:
-`node --experimental-strip-types tools/export-known-pois.mjs INPUT OUTPUT 25827816`
-Output must be outside the checkout. The verified local source contains 49 serialized
-discoveries and one explicitly known Lazarus locator. The build is Update 6 / 25827816.
-Private exports and campaign discovery lists must not be committed or bundled.
+Finds use deterministic 200×200 m XY display cells, with all exact member XYZ preserved
+for local 3D. Cell boundaries may split nearby finds; equal cells do not imply a common
+structure. No nearest-POI assignment, geometric inference or building membership is asserted.
+Derived group/item markers carry knowledge=unknown; only confirmed POIs carry knowledge=known.
+The default global view shows known POIs; a toggle adds one marker per display cell.
+A selected area opens its eligible members in local 3D, then returns to the saved global camera.
 
-## Rendering and future layers
+## Rendering
 
-Raw XYZ are immutable CPU Number records. The adapter uses metres in Three.js:
-`scene = ((X-Ox)/100, (Z-Oz)/100, (Y-Oy)/100)`.
-Unknown Z stays null; top-down DOM glyphs are only XY projections.
-Every view update rebases the origin to the double-precision camera centre, builds
-only visible grid lines, and reconstructs the local camera. Subtraction happens
-before Float32 conversion. No affine/raster transform. +X right, +Y down; no compass
-or sea-level claim. Z=0 is an arbitrary projection reference.
-
-The camera width ranges from 10 UE units (10 cm) to 1e9 UE units. At Full HD,
-1 UE-unit grid spacing is reachable and clearly separated on screen. Coordinate
-extent ±1e12 UE units protects arithmetic; it is not an asserted game boundary.
-The 1/2/5 major grid and minor lines scale with the viewport, not world area.
-The renderer draws only when dirty and disposes GPU resources, observers and input
-handlers on navigation. Marker projections use double precision before DOM pixels.
-Overlapping glyphs remain distinct records and can be selected through the list.
-Shared World/SpatialRecord types retain XYZ/provenance/visibility for future layers;
-geometry extraction and height filtering are deferred. The basic perspective projector is described below.
+The existing 2D/3D renderers, camera navigation, labels and height palette are retained.
+Coordinates transform as `((X-Ox)/100, (Z-Oz)/100, (Y-Oy)/100)`, with CPU origin rebasing
+before Float32 conversion. Z=0 is an arbitrary reference, not sea level. This is a point scene,
+not terrain, collision or building geometry. Labels are decluttered in screen space only.
+Coincident markers remain selectable in the lists. Unknown Z support remains in renderer math;
+official Full known POIs and eligible objects require complete finite XYZ.
 
 ## Checks
 
-`npm test`: coordinate roundtrip, origin rebasing, 1 cm at large coordinates,
-orientation, nullable Z, cursor anchored zoom, unchanged raw values, import policy.
-`npm run test:ui`: Chromium Full HD regression of /, /inventory, /map, empty state,
-synthetic import, exact coordinates, focus, drag, zoom and 1 cm grid.
-Optional `TLC_MAP_LOCAL_JSON` adds real 50-POI import, narrow viewport and continuous
-wheel benchmark at overview and 8/16 zoom steps. Synthetic records are test-only.
-
-Observed on this machine in headless Chromium with 50 real POI:
-mean frame interval 17.26 / 16.56 / 16.55 ms; p95 18.3 / 18 / 18 ms respectively.
-These include browser scheduling and are not GPU timings or universal FPS promises.
-An idle map does not redraw the WebGL scene. No 1k/10k/50k scalability claim.
-
-Production build and both browser checks passed. Coordinate tests: 8 passed.
-`svelte-check` reports 47 existing errors, all in unchanged `src/lib/solver.ts`;
-no errors reported in map files. Dependency audit reports 11 issues in the existing
-application dependency tree; no unrelated dependency upgrades were applied.
-
-No geographic raster, game geometry or public POI catalog is supplied. The local
-known set works now; future geometry and unknown locations require separate data
-and disclosure decisions. There is no blocking data dependency for the grid MVP.
-
-## Permanent POI labels
-
-Names are visible beside projected markers without selecting a POI. Text uses
-13px system-ui, a dark backdrop and text shadow. Marker size and raw XYZ are
-unchanged. Screen-space layout tries right, left, above-right and below-right;
-conflicting secondary labels are suppressed, but every marker remains available.
-Selected labels have first placement priority and remain visible. Labels avoid
-other marker centres, the toolbar and bottom readout. Long text is ellipsized;
-the complete name remains available via the button title and POI list.
-
-Hovering either dot or label highlights both without selecting or centering.
-Selected yellow styling takes precedence over hover. Text and dot share one
-button hit area; text placement does not depend on hover, preventing flicker.
-
-The checkout now lives in the permanent source directory. Private local imports
-belong in the laboratory's `User-Exports/Map` directory outside the repository.
-Paths are user-selected at import or supplied to tests via `TLC_MAP_LOCAL_JSON`;
-no workstation-specific absolute path is embedded in the application.
-
-Chromium verification with the same 50 POI includes Full HD and 390px viewport,
-permanent names, hover enter/leave, yellow selection, overlapping marker selection,
-search, focus, pan, cursor zoom, 1cm grid, and the existing application routes.
-Compared with the previous 18.0 / 16.6 / 16.6 ms mean frame intervals, the first
-labelled run measured 20.4 / 16.6 / 16.6 ms at overview / 8 / 16 zoom steps.
-This small local sample indicates extra layout work at overview; it is not a
-hardware-independent performance claim. Type checking still reports only the
-47 pre-existing solver errors; map files have no diagnostics.
-
-
-## Basic 3D projector
-
-Use the 2D / 3D buttons on `/map`; 2D remains the default. Import the same local
-JSON in either mode. Records, search and selection stay in page memory when
-switching. A newly entered mode starts at overview, or focuses the selected POI;
-previous camera orientation/zoom is not retained. No backend or JSON changes.
-
-3D loads a separate client-only renderer with PerspectiveCamera / OrbitControls:
-left drag pans; right drag rotates/tilts; wheel zooms toward the cursor. Touch supports one-finger
-orbit and two-finger pan/zoom. Controls use damping; focus is an immediate shift
-of camera and orbit target preserving viewing direction and distance.
-
-The same UE-cm coordinate adapter supplies GPU point positions and DOM label
-projections. Known Z controls height, with a thin vertical stem to world Z=0.
-Negative heights remain below the plane. Null Z projects onto Z=0 and uses a
-hollow diamond hit marker; the underlying immutable record stays null. This is
-an arbitrary reference plane, not a sea-level claim. The grid has no occluding
-surface, so negative-Z POI remain visible. Selection is yellow, hover is cyan/
-white, and layer visibility controls GPU points, stems and DOM labels together.
-
-Origin rebasing translates camera and orbit target together on the CPU before
-building Float32 buffers. Grid density follows camera distance; original records
-never change. Adaptive near/far clipping protects zoom precision. Both renderers
-release their frame callbacks, resources and event handlers on mode switch and
-page exit. 3D cursor X/Y are ray intersections with the reference plane, not POI
-picking or terrain coordinates. The 3D span readout estimates width at orbit focus.
-
-No geometry, textures, elevation exaggeration, height filtering or animated focus
-transition is supplied. At world overview, small genuine height differences may
-be subtle; zoom toward a POI to inspect them. The measured 3D continuous-wheel
-mean frame interval with 50 local POI was 17.1 ms (p95 18 ms) in headless Chromium
-on this machine; this is a local scheduling sample, not a general FPS guarantee.
-
-Verification: production build; 8 coordinate tests; 5 Chromium checks covering
-existing routes and 2D, local imports, 3D orbit/pan/zoom, distinct positive/negative
-heights at identical XY, unknown height, hover, selected focus, repeated switching,
-Full HD and narrow viewport, and real 50-POI performance. Existing solver type
-errors remain outside this change. Private campaign JSON is excluded from Git/build.
-
-### Mouse controls and wheel over labels
-
-The sidebar always shows a mode-specific control legend. In 3D, left drag pans,
-right drag orbits, and wheel/trackpad zoom uses OrbitControls zoomToCursor.
-Marker/label wheel events are forwarded to the canvas controls with their
-position, delta mode and modifier keys retained. Canvas events are not forwarded
-again; the forwarding listener is removed on mode exit. Label click/hover remain
-unchanged. Touch keeps one-finger orbit / two-finger pan and zoom. Zoom buttons
-still zoom around the orbit centre. In perspective mode cursor zoom follows the
-camera ray and orbit focus plane; it does not snap to a POI's individual height.
-
-Verified after the controls change: production build, existing 2D/3D UI checks
-and a dedicated Chromium regression for left-pan, right-orbit, cursor anchoring
-at an off-centre marker, wheel over a label, label selection and mode-specific
-help. Continuous-wheel 3D with 50 local POI remains about 17 ms mean per frame.
-
-### Subtle height tones (3D only)
-
-The shared GPU/DOM marker palette uses three related cyan shades: below −1 m is
-slightly darker, above +1 m is slightly lighter, and the inclusive ±1 m display
-band is neutral. This visual tolerance never changes the real height or its
-projection. Null Z keeps the neutral colour and hollow diamond, not a claim of
-zero elevation. Yellow selection and bright hover take precedence over height.
-The 3D sidebar legend states the thresholds. 2D colours and JSON are unchanged.
-
-
-## MapSnapshot v1: one-file save projection
-
-Import a private `MapSnapshot` JSON with schemaVersion 1 and UE-cm units using
-this same file picker. Legacy known-pois JSON remains supported. File limit is
-16 MB, with at most 1000 POI, 20000 occurrences and 2000 groups. Validation is
-transactional: invalid JSON, duplicate identities, inconsistent bounds/counts,
-hidden POI assertions, lost or duplicated assignments leave the current import
-intact. Valid replacement clears selection, groups and local projection, resets
-finds to hidden and replaces all POI. Camera transitions finish before applying
-an import, including imports triggered during a pending local entry.
-
-The export contract and command are documented in the separate TLC Hub checkout
-at `docs/design/map-snapshot-v1.md` and its JSON Schema. This site never accepts
-raw saves. Current exporter supports only the fingerprint-matching reviewed
-Update 6 snapshot through existing artifacts, not arbitrary saves.
-
-Metadata shows timestamp, compatible build, partial coverage warnings and spoiler
-status. `safe` exports contain no candidate coordinates. `with-candidates` JSON
-already discloses them: hiding markers only affects presentation. Nothing is
-uploaded or automatically persisted. Never put a private file into static/build
-or Git; import from LAB/User-Exports/Map instead.
-
-Finds start off. Enable “Показать находки” to show 38 decorated existing POI and
-47 independent diamond markers for the reviewed dataset (50 total known POI,
-1028 occurrences / 1058 units, 85 groups). A POI group adds no duplicate locator
-or label. Marker titles provide Memory/Artifact/Rare stack counts, total stacks
-and units, and candidate provenance. Group list also exposes the same summary
-and selection command. Existing POI height tones and marker sizes are retained.
-
-Select a group/associated POI, then “Показать область в 3D”. The local scene uses
-only the group's explicit occurrence keys. Initial perspective camera fits
-actual item XYZ bounds with padding, including height range; original numbers
-remain immutable and are rebased before GPU conversion. Vertical stems project
-to the group's minimum known Z (arbitrary reference, not sea level). Null Z remains
-unknown, has no asserted stem and uses a hollow diamond at the reference plane.
-Memory is #55F56C, Artifact #FFE34A, Rare #339CFF; selection stays yellow. Labels
-use existing overlap suppression; every item also remains selectable in the list.
-
-Item cards show definition/name, category, quality, quantity, raw XYZ, metres,
-coordinate source, confidence, ownership and provenance. Names are not invented.
-Left drag pans, right drag rotates, wheel zooms; controls and category labels
-remain local. “Вернуться к карте” recreates the original 2D/3D engine and restores
-its exact camera centre/scale or origin/position/orbit target plus selected POI.
-This differs from ordinary global 2D/3D switches, which retain their existing
-focus/overview behavior. Render resources are disposed on every transition.
-
-Checks added: relational parser tests; Chromium one-file import, default spoiler
-hiding, summaries, positive/negative local heights, item selection, camera return
-from both modes, invalid-import transaction and valid replacement from local 3D;
-optional TLC_MAP_SNAPSHOT exercises the real private file and narrow viewport.
-Run `npm test`, `npm run build`, `npm run test:ui`. Existing type checking still
-reports 47 errors solely in unchanged solver.ts; no map diagnostics remain.
-
-
-MapSnapshot acceptance run: 10 coordinate/import unit tests passed; all 9 Chromium
-checks passed with both private fixture variables set (including the 57-occurrence
-largest local group). Production build passed. The 50-POI/85-group idle frame
-sample was 16.66 ms mean; the existing continuous-wheel 50-POI samples were
-22.68/16.63/16.59 ms in 2D (overview/8/16 steps), and 17.04 ms in 3D.
-These are local browser scheduling samples, not GPU timings or a general FPS claim.
+`npm test` checks the Full reader, projection, unknown-coordinate exclusion and renderer math.
+`npx svelte-check --tsconfig ./tsconfig.json` checks Svelte/TypeScript.
+`npm run build` builds the static site. `npx playwright install chromium` installs test Chromium
+in the standard user browser cache. `npm run test:ui` checks import replacement, labels, both
+camera modes, local groups, exact camera return and calculator interaction.
+An optional `TLC_FULL_JSON` environment variable enables a private official Full UI test.
+Do not commit private snapshots, discovery lists, screenshots or source paths.
+Real-data measurements belong in the user's local Voyage-TLC Reports directory.

@@ -1,38 +1,44 @@
-import {parsePOIs,LIMIT,type POI,type World} from './coordinates.ts';
+import type { POI, World } from './coordinates.ts';
+import {exactUnits, type FullSnapshot, type Category} from './full-snapshot.ts';
 export const categoryColors={Memory:'#55F56C',Artifact:'#FFE34A',Rare:'#339CFF'};
-export type Category=keyof typeof categoryColors;
-export type Occurrence={key:string;definitionId:string;name:string|null;category:Category;quality:string;quantity:number;world:World;ownership:string;provenance:string;source:string;confidence:string;groupId:string};
-export type Group={id:string;type:'poi'|'cluster';centre:World;poiId:string|null;occurrenceKeys:string[];counts:Record<Category,number>;units:Record<Category,number>;bounds:{min:World;max:World};extent:{xyDiameterM:number;zSpanM:number|null};algorithm:Record<string,unknown>;ambiguousAssignments:Record<string,string[]>};
-export type Snapshot={pois:POI[];occurrences:Occurrence[];groups:Group[];metadata:null|{mode:'safe'|'with-candidates';spoilers:boolean;gameBuild:string|null;snapshotTimestamp:string;snapshotFingerprint:string;source:string;warnings:string[];coverage:Record<string,unknown>;grouping:Record<string,unknown>}};
-const fail=()=>{throw Error('Некорректный MapSnapshot v1: структура, координаты или назначения групп.');};
-const text=(v:unknown):v is string=>typeof v==='string'&&v.length>0&&v.length<=2048;
-function world(v:any):World{if(!v||!['x','y'].every(k=>typeof v[k]==='number'&&Number.isFinite(v[k])&&Math.abs(v[k])<=LIMIT)||!(v.z===null||typeof v.z==='number'&&Number.isFinite(v.z)&&Math.abs(v.z)<=LIMIT))fail();return Object.freeze({x:v.x,y:v.y,z:v.z});}
-export function parseSnapshot(input:any):Snapshot{
- const pois=parsePOIs(input);
- if(input.format===undefined){if(input.occurrences!==undefined||input.groups!==undefined||input.metadata!==undefined)fail();return {pois,occurrences:[],groups:[],metadata:null};}
- if(input.format!=='MapSnapshot'||!Array.isArray(input.occurrences)||input.occurrences.length>20000||!Array.isArray(input.groups)||input.groups.length>2000)fail();
- const m=input.metadata;
- if(!m||!['safe','with-candidates'].includes(m.mode)||m.spoilers!==(m.mode==='with-candidates')||!(m.gameBuild===null||text(m.gameBuild))||!text(m.snapshotTimestamp)||!Number.isFinite(Date.parse(m.snapshotTimestamp))||!/^[a-fA-F0-9]{64}$/.test(m.snapshotFingerprint)||!text(m.source)||!Array.isArray(m.warnings)||m.warnings.length>100||!m.warnings.every(text)||!m.coverage||!m.grouping)fail();
- const keys=new Map<string,Occurrence>(),gids=new Set<string>(),assigned=new Set<string>(),pids=new Set(pois.map(p=>p.id));
- const occurrences:Occurrence[]=input.occurrences.map((i:any)=>{
-  if(!i||!['key','definitionId','quality','ownership','provenance','source','confidence','groupId'].every(k=>text(i[k]))||!(i.name===null||text(i.name))||!Object.hasOwn(categoryColors,i.category)||!Number.isSafeInteger(i.quantity)||i.quantity<1||keys.has(i.key)||pids.has(i.key))fail();
-  const item=Object.freeze({...i,world:world(i.world)});keys.set(i.key,item);return item;
+export type Occurrence={key:string;definitionId:string;name:string|null;category:Category;quality:string;quantity:bigint;world:World;ownership:string;provenance:string;source:string;confidence:string;groupId:string};
+export type Group={id:string;type:'cluster';centre:World;poiId:null;occurrenceKeys:string[];counts:Record<Category,number>;units:Record<Category,bigint>;bounds:{min:World;max:World};extent:{xyDiameterM:number;zSpanM:number|null};algorithm:Record<string,unknown>};
+export type Snapshot={pois:POI[];occurrences:Occurrence[];groups:Group[];metadata:null|{gameBuild:string;warnings:string[]};stats?:{objects:number;eligible:number;missingCoordinates:number}};
+const world=(xyz:number[]):World=>({x:xyz[0],y:xyz[1],z:xyz[2]});
+
+/** Derived display only. Fixed 200m XY cells; no POI/structure membership claim.
+ * Independent of input order and Z; members keep their exact confirmed XYZ.
+ */
+export function projectFull(full:FullSnapshot):Snapshot {
+ const gameBuild=full.metadata.installedBuildId ?? full.metadata.reviewedMetadataBuild;
+ const pois:POI[]=full.pois.map(p=>({id:`poi:${p.Asset}`,name:[p.DisplayName,p.Name,p.Asset].find(v=>typeof v==='string' && v.length>0) ?? p.Asset,
+  world:world([p.Position.X,p.Position.Y,p.Position.Z]),source:'Serialized Location discovery; static root locator',
+  gameBuild,knowledge:'known',accuracy:p.CoordinateType,layer:'poi',visibility:'local'}));
+ const cells=new Map<string,Occurrence[]>();
+ const occurrences:Occurrence[]=[];
+ for (const o of full.objects) {
+  if (!o.scannerCategory || o.xyz === null) continue;
+  const w=world(o.xyz), id=`area:${Math.floor(w.x/20000)}:${Math.floor(w.y/20000)}`;
+  const item:Occurrence={key:o.id,definitionId:typeof o.definition==='string'?o.definition:o.itemIdentity.assetName,name:o.itemIdentity.assetName,
+   category:o.scannerCategory,quality:typeof o.quality==='string'?o.quality:'Unknown',quantity:exactUnits(o.units),world:w,
+   ownership:'Unknown',provenance:'Selected save source; no structure association',source:'Full v1 confirmed xyz / scannerCategory',confidence:o.confidence,groupId:id};
+  occurrences.push(item);
+  if (!cells.has(id)) cells.set(id,[]); cells.get(id)!.push(item);
+ }
+ const groups:Group[]=Array.from(cells.entries()).sort(([a],[b])=>a.localeCompare(b)).map(([id,items])=>{
+  const min={x:Infinity,y:Infinity,z:Infinity},max={x:-Infinity,y:-Infinity,z:-Infinity};
+  const counts={Memory:0,Artifact:0,Rare:0},units={Memory:0n,Artifact:0n,Rare:0n};
+  for (const i of items) {
+   for (const a of ['x','y','z'] as const) {min[a]=Math.min(min[a],i.world[a]!);max[a]=Math.max(max[a],i.world[a]!);}
+   counts[i.category]++;units[i.category]+=i.quantity;
+  }
+  return {id,type:'cluster',poiId:null,centre:{x:(min.x+max.x)/2,y:(min.y+max.y)/2,z:(min.z+max.z)/2},
+   occurrenceKeys:items.map(i=>i.key).sort(),counts,units,bounds:{min,max},
+   extent:{xyDiameterM:Math.hypot(max.x-min.x,max.y-min.y)/100,zSpanM:(max.z-min.z)/100},algorithm:{version:'xy-grid-200m-v1',uncertainty:'Display cells only; boundaries may split nearby finds; no structure membership'}};
  });
- const usedPoi=new Set<string>();
- const groups:Group[]=input.groups.map((g:any)=>{
-  if(!g||!text(g.id)||pids.has(g.id)||keys.has(g.id)||gids.has(g.id)||!['poi','cluster'].includes(g.type)||!Array.isArray(g.occurrenceKeys)||!g.occurrenceKeys.length||g.occurrenceKeys.length>20000||!(g.type==='poi'?pids.has(g.poiId)&&!usedPoi.has(g.poiId):g.poiId===null)||!g.bounds||!g.extent||!g.algorithm||!g.ambiguousAssignments)fail();
-  gids.add(g.id);if(g.poiId)usedPoi.add(g.poiId);
-  const centre=world(g.centre),min=world(g.bounds.min),max=world(g.bounds.max);
-  if(!Number.isFinite(g.extent.xyDiameterM)||g.extent.xyDiameterM<0||!(g.extent.zSpanM===null||Number.isFinite(g.extent.zSpanM)&&g.extent.zSpanM>=0))fail();
-  const members:Occurrence[]=g.occurrenceKeys.map((key:any)=>{const i=keys.get(key);if(!i||assigned.has(key)||i.groupId!==g.id)fail();assigned.add(key);return i!;});
-  for(const axis of ['x','y','z'] as const){const values=members.map(i=>i.world[axis]).filter((v):v is number=>v!==null);if(values.length?(min[axis]!==Math.min(...values)||max[axis]!==Math.max(...values)):(min[axis]!==null||max[axis]!==null))fail();}
-  if(g.poiId){const p=pois.find(p=>p.id===g.poiId)!;if(['x','y','z'].some(k=>centre[k as keyof World]!==p.world[k as keyof World]))fail();}
-  for(const c of Object.keys(categoryColors) as Category[]){if(g.counts?.[c]!==members.filter(i=>i.category===c).length||g.units?.[c]!==members.filter(i=>i.category===c).reduce((sum,i)=>sum+i.quantity,0))fail();}
-  return Object.freeze({...g,centre,bounds:{min,max},occurrenceKeys:[...g.occurrenceKeys]});
- });
- if(assigned.size!==keys.size||m.mode==='safe'&&(occurrences.length||groups.length))fail();
- return {pois,occurrences,groups,metadata:{...m,warnings:[...m.warnings]}};
+ return {pois,occurrences,groups,metadata:{gameBuild,warnings:[...full.metadata.limitations,'Offline selective data; game-session binding unverified.','Области: ячейки 200×200 м; границы условны. Принадлежность сооружениям неизвестна.']},
+  stats:{objects:full.objects.length,eligible:occurrences.length,missingCoordinates:full.objects.filter(o=>o.xyz===null).length}};
 }
-export function groupSummary(g:Group){return `Memory: ${g.counts.Memory} · Artifact: ${g.counts.Artifact} · Rare: ${g.counts.Rare} · всего: ${g.occurrenceKeys.length} объектов / ${Object.values(g.units).reduce((a,b)=>a+b,0)} единиц · кандидаты из сохранения`;}
-export function groupMarker(g:Group):POI{return {id:g.id,name:`Область находок (${g.occurrenceKeys.length})`,world:g.centre,source:'Кандидаты из сохранения; вычисленный центр',gameBuild:'unknown',knowledge:'known',accuracy:'Derived display centre; no player knowledge assertion',layer:'poi',visibility:'local'};}
-export function itemMarker(i:Occurrence):POI{return {id:i.key,name:i.name??i.definitionId.split('/').pop()??i.definitionId,world:i.world,source:i.source,gameBuild:'unknown',knowledge:'known',accuracy:i.confidence,layer:'poi',visibility:'local'};}
+export function groupSummary(g:Group){return `Memory: ${g.counts.Memory} · Artifact: ${g.counts.Artifact} · Rare: ${g.counts.Rare} · всего: ${g.occurrenceKeys.length} объектов / ${Object.values(g.units).reduce((a,b)=>a+b,0n)} единиц · кандидаты из сохранения`;}
+export function groupMarker(g:Group):POI{return {id:g.id,name:`Область находок (${g.occurrenceKeys.length})`,world:g.centre,source:'Кандидаты из сохранения; вычисленный центр',gameBuild:'unknown',knowledge:'unknown',accuracy:'Derived display centre; no player knowledge assertion',layer:'poi',visibility:'local'};}
+export function itemMarker(i:Occurrence):POI{return {id:i.key,name:i.name??i.definitionId,world:i.world,source:i.source,gameBuild:'unknown',knowledge:'unknown',accuracy:i.confidence,layer:'poi',visibility:'local'};}

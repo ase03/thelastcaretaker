@@ -2,7 +2,8 @@
  import '../../app.css';
  import {onMount} from 'svelte';
  import {metres,type POI} from '$lib/map/coordinates';
- import {parseSnapshot,groupSummary,groupMarker,itemMarker,categoryColors,type Snapshot,type Group,type Occurrence} from '$lib/map/snapshot';
+ import {projectFull,groupSummary,groupMarker,itemMarker,categoryColors,type Snapshot,type Group,type Occurrence} from '$lib/map/snapshot';
+ import {readFull,type FullSnapshot} from '$lib/map/full-snapshot';
  import {heightColor,heightTone} from '$lib/map/appearance';
  import {placeLabels} from '$lib/map/labels';
  import type {Frame} from '$lib/map/renderer';
@@ -10,6 +11,8 @@
  let mode=$state<'2D'|'3D'>('2D'),hovered=$state<string|undefined>();let generation=0;
  let pois=$state<POI[]>([]),search=$state(''),selected=$state<POI|null>(null),error=$state(''),ready=$state(false),show=$state(true);
  let snapshot=$state<Snapshot>({pois:[],occurrences:[],groups:[],metadata:null}),showFinds=$state(false),localGroup=$state<Group|null>(null),selectedGroup=$state<Group|null>(null),selectedItem=$state<Occurrence|null>(null);
+ // Keep the complete accepted document and exact source text, separate from its map view.
+ let accepted=$state.raw<{full:FullSnapshot;sourceText:string}|null>(null);
  let transition:Promise<void>=Promise.resolve();let importGeneration=0;
  let savedGlobal:{mode:'2D'|'3D';camera:unknown}|null=null;
  const activeGroup=$derived(selectedGroup??(selected?snapshot.groups.find(g=>g.poiId===selected?.id)??null:null));
@@ -17,13 +20,21 @@
  const rendered=$derived(localGroup?localItems.map(itemMarker):[...(show?pois:[]),...(showFinds?snapshot.groups.filter(g=>g.type==='cluster').map(groupMarker):[])]);
  let pointer=$state<{x:number;y:number}|null>(null);let frame=$state<Frame>({markers:[],labels:[],step:'',span:0,cx:0,cy:0,fps:0});
  let measureText = $state<(name:string)=>number>(name=>name.length*7.5);
- const labeledMarkers = $derived(placeLabels(frame.markers,localGroup?selectedItem?.key:selectedGroup?.type==='cluster'?selectedGroup.id:selected?.id,host?.clientWidth??1,host?.clientHeight??1,measureText));
+ const labeledMarkers = $derived(placeLabels(frame.markers,localGroup?selectedItem?.key:selectedGroup?selectedGroup.id:selected?.id,host?.clientWidth??1,host?.clientHeight??1,measureText));
  const filtered=$derived(pois.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())||p.id.toLowerCase().includes(search.toLowerCase())));
- onMount(()=>{const context=document.createElement('canvas').getContext('2d');if(context){context.font='13px system-ui';const widths=new Map<string,number>();measureText=name=>{if(!widths.has(name))widths.set(name,context.measureText(name).width);return widths.get(name)!;};}let cancelled=false;import('$lib/map/renderer').then(({createMap})=>{if(cancelled)return;try{engine=createMap(host,f=>frame=f,p=>pointer=p);ready=true;}catch(e){error=`WebGL недоступен: ${String(e)}`;}}).catch(e=>error=String(e));return()=>{cancelled=true;generation++;engine?.dispose();};});
- async function load(e:Event){const file=(e.target as HTMLInputElement).files?.[0];if(!file)return;try{
-  if(file.size>16000000)throw Error('Файл больше 16 МБ');const importTicket=++importGeneration;const next=parseSnapshot(JSON.parse(await file.text()));await transition;if(importTicket!==importGeneration)return;
-  if(localGroup)await backToMap();snapshot=next;pois=next.pois;selected=null;selectedGroup=null;selectedItem=null;hovered=undefined;showFinds=false;localGroup=null;savedGlobal=null;search='';error='';engine?.setPOIs(show?pois:[]);syncAppearance();
- }catch(e){error=String(e);}(e.target as HTMLInputElement).value='';}
+ onMount(()=>{const context=document.createElement('canvas').getContext('2d');if(context){context.font='13px system-ui';const widths=new Map<string,number>();measureText=name=>{if(!widths.has(name))widths.set(name,context.measureText(name).width);return widths.get(name)!;};}let cancelled=false;import('$lib/map/renderer').then(({createMap})=>{if(cancelled)return;try{engine=createMap(host,f=>frame=f,p=>pointer=p);ready=true;}catch(e){error=`WebGL недоступен: ${String(e)}`;}}).catch(e=>error=String(e));return()=>{cancelled=true;generation++;importGeneration++;engine?.dispose();};});
+ async function load(e:Event){
+  const input=e.target as HTMLInputElement,file=input.files?.[0];if(!file)return;
+  const importTicket=++importGeneration;
+  try{
+   const text=await file.text(),full=await readFull(text),next=projectFull(full);
+   await transition;if(importTicket!==importGeneration)return;
+   if(localGroup)await backToMap();if(importTicket!==importGeneration)return;
+   accepted={full,sourceText:text};snapshot=next;pois=next.pois;selected=null;selectedGroup=null;selectedItem=null;
+   hovered=undefined;showFinds=false;localGroup=null;savedGlobal=null;search='';error='';engine?.setPOIs(show?pois:[]);syncAppearance();
+  }catch(e){if(importTicket===importGeneration)error=String(e);}
+  finally{if(importTicket===importGeneration)input.value='';}
+ }
  function switchMode(next:'2D'|'3D'){transition=changeMode(next);return transition;}
  async function changeMode(next:'2D'|'3D'){
   if(next===mode||!ready)return;ready=false;const ticket=++generation;
@@ -33,7 +44,7 @@
    engine?.dispose();engine=replacement;mode=next;engine.setPOIs(rendered);if(selected)engine.focus(selected);syncAppearance();ready=true;
   }catch(e){error=String(e);ready=true;}
  }
- function syncAppearance(){if(engine&&'setAppearance' in engine)engine.setAppearance(localGroup?selectedItem?.key:selectedGroup?.type==='cluster'?selectedGroup.id:selected?.id,hovered,true);}
+ function syncAppearance(){if(engine&&'setAppearance' in engine)engine.setAppearance(localGroup?selectedItem?.key:selectedGroup?selectedGroup.id:selected?.id,hovered,true);}
  $effect(()=>{selected;selectedItem;selectedGroup;hovered;syncAppearance();});
  $effect(()=>{const records=rendered;if(ready)engine?.setPOIs(records,true);});
  function pick(p:POI){if(localGroup){selectedItem=localItems.find(i=>i.key===p.id)??null;return;}
@@ -64,8 +75,8 @@
 <div class="map-app">
  <header><div><h1>TLC Hub Map</h1><small>Мировые координаты · UE / сантиметры</small></div><nav><a href="/">Build Optimizer</a><a href="/inventory">Inventory</a><span>Map</span></nav></header>
  <main>
- <aside><label class="import">Импорт известных POI / MapSnapshot<input type="file" accept=".json,application/json" onchange={load} disabled={!ready}/></label><p class="muted">Файл остаётся в памяти этой страницы. Ничего не отправляется на сервер.</p>
- {#if snapshot.metadata}<details class="snapshot-info" open><summary>Снимок · {snapshot.metadata.gameBuild??'build неизвестен'}</summary><p>{snapshot.metadata.snapshotTimestamp}</p><p>{snapshot.occurrences.length} находок · {snapshot.groups.length} групп</p>{#each snapshot.metadata.warnings as warning}<p class="muted">{warning}</p>{/each}{#if snapshot.metadata.spoilers}<p role="status">Спойлеры: файл содержит координаты кандидатов. Тумблер скрывает их только на карте.</p>{/if}</details>{/if}
+ <aside><label class="import">Импорт Full v1 · full.json<input type="file" accept=".json,application/json" onchange={load} disabled={!ready}/></label><p class="muted">Файл остаётся в памяти этой страницы. Ничего не отправляется на сервер.</p>
+ {#if snapshot.metadata}<details class="snapshot-info" open><summary>Full v1 · build {snapshot.metadata.gameBuild}</summary><p>{accepted?.full.objects.length} записей · {pois.length} известных POI</p><p>{snapshot.occurrences.length} находок · {snapshot.groups.length} групп</p><p>Без подтверждённых координат: {snapshot.stats?.missingCoordinates}</p>{#each snapshot.metadata.warnings as warning}<p class="muted">{warning}</p>{/each}<p role="status">Спойлеры: Full содержит координаты кандидатов. Тумблер скрывает их только на карте.</p></details>{/if}
  {#if localGroup}<button onclick={backToMap} disabled={!ready}>Вернуться к карте</button><h2>Локальный 3D · область находок</h2><p class="muted">Левая кнопка — pan · правая — вращение · колесо — zoom. Сенсорный экран: один палец — вращение, два — pan/zoom.</p><p>{groupSummary(localGroup)}</p><p class="muted">Опорная плоскость Z: {metres(localGroup.bounds.min.z??0)} м. Назначение — пространственная гипотеза.</p>
  <div class="list">{#each localItems as item (item.key)}<button class:active={selectedItem?.key===item.key} style:color={categoryColors[item.category]} onclick={()=>selectedItem=item}>{item.name??item.definitionId.split('/').pop()} · {item.quantity}</button>{/each}</div>
  {#if selectedItem}<section><h2>{selectedItem.name??selectedItem.definitionId}</h2><p>{selectedItem.category} · {selectedItem.quality} · количество: {selectedItem.quantity}</p><p>Raw XYZ: {selectedItem.world.x}, {selectedItem.world.y}, {selectedItem.world.z??'неизвестна'}</p><p>X: {metres(selectedItem.world.x)} м<br/>Y: {metres(selectedItem.world.y)} м<br/>Z: {selectedItem.world.z===null?'неизвестна':metres(selectedItem.world.z)+' м'}</p><p>{selectedItem.source}</p><p>Достоверность: {selectedItem.confidence}</p><p>Ownership: {selectedItem.ownership} · provenance: {selectedItem.provenance}</p><button onclick={()=>engine?.focus(itemMarker(selectedItem!))}>Центрировать предмет</button></section>{/if}
@@ -73,7 +84,7 @@
  <input aria-label="Поиск POI" placeholder="Поиск по имени или ID" bind:value={search}/>
  <label><input type="checkbox" bind:checked={show}/> Показать слой POI</label>
  <label><input type="checkbox" bind:checked={showFinds} disabled={!snapshot.groups.length}/> Показать находки</label>
- {#if snapshot.metadata&&!snapshot.groups.length}<p class="muted">POI загружены, находок нет (safe export или пустая выборка).</p>{:else if snapshot.groups.length&&!showFinds}<p class="muted">Находки присутствуют, скрыты тумблером.</p>{/if}
+ {#if snapshot.metadata&&!snapshot.groups.length}<p class="muted">Full принят; подходящих для карты находок нет.</p>{:else if snapshot.groups.length&&!showFinds}<p class="muted">Находки присутствуют, скрыты тумблером.</p>{/if}
  <div class="controls-guide" aria-label="Управление картой"><strong>Управление · {mode}</strong>
  <p>Левая кнопка + drag — перемещение</p>
  {#if mode==='3D'}<p>Правая кнопка + drag — вращение и наклон</p>{/if}
@@ -82,11 +93,11 @@
  </div>
  {#if mode==='3D'}<div class="height-legend" aria-label="Высота относительно Z=0"><strong>Относительно Z=0</strong><p><span style:color={heightColor(-101)}>●</span> Ниже −1 м · темнее</p><p><span style:color={heightColor(0)}>●</span> От −1 до +1 м · нейтральный</p><p><span style:color={heightColor(101)}>●</span> Выше +1 м · светлее</p><p>◇ Высота неизвестна</p></div>{/if}
  <p>{pois.length} объектов · {filtered.length} найдено</p>
- {#if !pois.length}<p class="empty">Данные не загружены. Импортируйте отфильтрованный JSON известных игровых локаторов.</p>{/if}
+ {#if !pois.length}<p class="empty">{snapshot.metadata?'В принятом Full нет известных POI.':'Данные не загружены. Выберите официальный full.json.'}</p>{/if}
  <div class="list">{#each filtered as p (p.id)}<button class:active={selected?.id===p.id} onclick={()=>pick(p)}>{p.name}</button>{/each}</div>
  {#if selected}<section><h2>{selected.name}</h2><p>X: {metres(selected.world.x)} м<br/>Y: {metres(selected.world.y)} м<br/>Z: {selected.world.z===null?'неизвестна':`${metres(selected.world.z)} м`}</p><button onclick={()=>engine?.focus(selected!)}>Центрировать</button><p class="muted">Позиция игрового локатора; не обязательно вход или центр сооружения.</p><details><summary>Происхождение и точность</summary><p>{selected.id}</p><p>Build: {selected.gameBuild}</p><p>{selected.source}</p><p>{selected.accuracy}</p><p>Статус: известен игроку</p></details></section>{/if}
  {#if showFinds&&activeGroup}<section><h2>Область находок</h2><p>{groupSummary(activeGroup)}</p><button onclick={()=>openGroup(activeGroup!)} disabled={!ready}>Показать область в 3D</button></section>{/if}
- {#if showFinds}<div class="list" aria-label="Группы находок">{#each snapshot.groups as g (g.id)}<button onclick={()=>{selectedGroup=g;selected=pois.find(p=>p.id===g.poiId)??null;}}>{g.type==='poi'?pois.find(p=>p.id===g.poiId)?.name:'Самостоятельная область'} · {g.occurrenceKeys.length}</button>{/each}</div>{/if}
+ {#if showFinds}<div class="list" aria-label="Группы находок">{#each snapshot.groups as g (g.id)}<button onclick={()=>{selectedGroup=g;selected=pois.find(p=>p.id===g.poiId)??null;}}>{'Самостоятельная область'} · {g.occurrenceKeys.length}</button>{/each}</div>{/if}
  {/if}
  </aside>
  <div class="viewport" bind:this={host}>
