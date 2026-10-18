@@ -1,4 +1,12 @@
-import solver from 'javascript-lp-solver';
+import lpSolver, { type Model, type Solution } from 'javascript-lp-solver';
+
+// v1.0.3 declares Solve as unknown to cover full, external and multi-objective results.
+// This boundary accepts only internal, single-objective models and requests the simplified result.
+const solver = {
+	Solve(model: Omit<Model, 'optimize' | 'external'> & { optimize: string; external?: never }): Solution {
+		return lpSolver.Solve(model) as Solution;
+	}
+};
 import type {
 	FoodItem, MemoryItem, PhysicalStats, PsychTraits, Ingredients,
 	FoodAllocation, MemoryAllocation, OptimizationResult, ProfessionMatch, TraitShortfall
@@ -11,8 +19,8 @@ const physicalStatKeys: (keyof PhysicalStats)[] = ['weight', 'height', 'lifeExp'
 const traitKeys: (keyof PsychTraits)[] = ['adaptability', 'creativity', 'communication', 'discipline', 'empathy', 'focus', 'leadership', 'logic', 'patience', 'wisdom'];
 const ingredientKeys: (keyof Ingredients)[] = ['carbohydrate', 'fat', 'protein', 'calcium', 'omega3', 'vitaminD', 'bioregulator', 'mitoAmplifier', 'naniteNutrient'];
 
-function hasAnyRequirement(reqs: Record<string, number>, keys: string[]): boolean {
-	return keys.some(k => (reqs as Record<string, number>)[k] > 0);
+function hasAnyRequirement<K extends string>(reqs: Record<K, number>, keys: K[]): boolean {
+	return keys.some(k => reqs[k] > 0);
 }
 
 function optimizeFood(requirements: PhysicalStats): FoodAllocation[] {
@@ -47,7 +55,7 @@ function optimizeFood(requirements: PhysicalStats): FoodAllocation[] {
 		}
 
 		const variables: Record<string, Record<string, number>> = {};
-		const ints: Record<string, number> = {};
+		const ints: Record<string, 1> = {};
 
 		for (const food of foodItems) {
 			variables[food.name] = {
@@ -133,7 +141,7 @@ function optimizeFoodMinAdvanced(requirements: PhysicalStats): FoodAllocation[] 
 		}
 
 		const variables: Record<string, Record<string, number>> = {};
-		const ints: Record<string, number> = {};
+		const ints: Record<string, 1> = {};
 
 		for (const food of foodItems) {
 			const advancedMaterials =
@@ -213,7 +221,7 @@ function optimizeFoodSaveScarce(requirements: PhysicalStats): FoodAllocation[] {
 		if (requirements[key] > 0) constraints[key] = { min: requirements[key] };
 	}
 	const variables: Record<string, Record<string, number>> = {};
-	const ints: Record<string, number> = {};
+	const ints: Record<string, 1> = {};
 	for (const food of foodItems) {
 		variables[food.name] = {
 			totalItems: 1,
@@ -294,7 +302,7 @@ function optimizeFoodBalanced(requirements: PhysicalStats): FoodAllocation[] {
 		}
 
 		const variables: Record<string, Record<string, number>> = {};
-		const ints: Record<string, number> = {};
+		const ints: Record<string, 1> = {};
 
 		for (const food of foodItems) {
 			const advancedMaterials =
@@ -395,7 +403,7 @@ function optimizeMemories(requirements: PsychTraits): MemoryAllocation[] {
 	}
 
 	const variables: Record<string, Record<string, number>> = {};
-	const ints: Record<string, number> = {};
+	const ints: Record<string, 1> = {};
 
 	for (const memory of memoryItems) {
 		// Skip memories that provide no useful traits
@@ -449,7 +457,7 @@ function optimizeMemoriesMinUnique(requirements: PsychTraits): MemoryAllocation[
 	const buildModel = (uniqueTypesTarget?: number) => {
 		const constraints: Record<string, { min?: number; max?: number }> = {};
 		const variables: Record<string, Record<string, number>> = {};
-		const ints: Record<string, number> = {};
+		const ints: Record<string, 1> = {};
 
 		for (const key of traitKeys) {
 			if (requirements[key] > 0) {
@@ -552,7 +560,7 @@ function optimizeMemoriesFromInventory(requirements: PsychTraits, inventory: Rec
 	}
 
 	const variables: Record<string, Record<string, number>> = {};
-	const ints: Record<string, number> = {};
+	const ints: Record<string, 1> = {};
 
 	for (const memory of memoryItems) {
 		const available = inventory[memory.name] || 0;
