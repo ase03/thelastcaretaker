@@ -30,13 +30,22 @@ test('invalid Full and legacy imports preserve accepted snapshot and local view'
  }
 });
 
-test('private official Full one-file import',async({page})=>{
+for(const origin of ['localhost','http'])test(`private official Full one-file import: ${origin}`,async({page})=>{
  test.skip(!process.env.TLC_FULL_JSON,'Private Full not configured');
  const {readFileSync}=await import('node:fs');const buffer=readFileSync(process.env.TLC_FULL_JSON);
  const {readFull}=await import('../src/lib/map/full-snapshot.ts');const {projectFull}=await import('../src/lib/map/snapshot.ts');
  const projection=projectFull(await readFull(buffer.toString('utf8')));
  const errors=[];page.on('pageerror',e=>errors.push(e.message));
- await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();
+ // Serve the existing preview build at an untrusted HTTP test origin. No
+ // crypto mocks, HTTPS flags, server configuration changes or external server.
+ if(origin==='http')await page.route('http://tlc-http.test:4173/**',async route=>{
+  const url=new URL(route.request().url());url.hostname='127.0.0.1';
+  await route.fulfill({response:await route.fetch({url:url.href})});
+ });
+ await page.goto(origin==='http'?'http://tlc-http.test:4173/map':'/map');
+ const capabilities=await page.evaluate(()=>({secure:isSecureContext,subtle:!!globalThis.crypto?.subtle}));
+ expect(capabilities).toEqual({secure:origin==='localhost',subtle:origin==='localhost'});
+ await expect(page.locator('canvas')).toBeVisible();
  await page.locator('input[type=file]').setInputFiles({name:'full.json',mimeType:'application/json',buffer});
  await expect(page.locator('.snapshot-info')).toContainText(`${projection.stats.objects} записей`,{timeout:30000});
  await expect(page.locator('aside .list').first().locator('button')).toHaveCount(projection.pois.length);

@@ -1,6 +1,7 @@
+import {createHash} from 'node:crypto';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {readFull,validateFull} from '../src/lib/map/full-snapshot.ts';
+import {readFull,validateFull,sha256Hex} from '../src/lib/map/full-snapshot.ts';
 import {projectFull,groupMarker,itemMarker} from '../src/lib/map/snapshot.ts';
 import {fixture,fullFromPois,idFor} from './snapshot-fixture.mjs';
 
@@ -56,3 +57,22 @@ test('no legacy numerical import caps; exact large quantity totals',async()=>{
  const many=fullFromPois(Array.from({length:1001},(_,i)=>({id:String(i),name:'test',world:{x:i,y:0,z:0}})));
  assert.equal(projectFull(await validateFull(many)).pois.length,1001);
 });
+
+for (const mode of ['WebCrypto','fallback']) {
+ test(`SHA-256 UTF-8 matches reference: ${mode}`,async t=>{
+  if(mode==='fallback') t.mock.getter(globalThis,'crypto',()=>undefined);
+  const digest=mode==='WebCrypto'?t.mock.method(globalThis.crypto.subtle,'digest'):null;
+  // Empty, ASCII, Unicode and SHA-256 padding/block boundaries.
+  for(const source of ['', 'abc', 'Запись/漢字/🌊', ...[55,56,63,64,65,127,128,129,1000].map(n=>'a'.repeat(n))]){
+   assert.equal(await sha256Hex(source),createHash('sha256').update(source,'utf8').digest('hex'));
+  }
+  const d=fixture();d.objects[0].sourceRecord='Запись/漢字/🌊';d.objects[0].id=idFor(d.objects[0].sourceRecord);
+  assert.deepEqual(await readFull(JSON.stringify(d)),d);
+  if(digest)assert.equal(digest.mock.callCount(),14);
+ });
+ for(const field of ['sourceRecord','id'])test(`reject tampered ${field}: ${mode}`,async t=>{
+  if(mode==='fallback') t.mock.getter(globalThis,'crypto',()=>({}));
+  const d=fixture();d.objects[0][field]=field==='id'?idFor('tampered'):'tampered';
+  await assert.rejects(validateFull(d),/id derivation/);
+ });
+}

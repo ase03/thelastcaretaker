@@ -1,3 +1,4 @@
+import { sha256 } from '@noble/hashes/sha2.js';
 import { LIMIT } from './coordinates.ts';
 
 // Independent Full reader. No renderer, grouping or Scanner document dependency.
@@ -37,6 +38,13 @@ function numericEvidence(v:any):void {
 }
 function countMap(v:any) {
  check(record(v) && Object.values(v).every(count), 'coverage counts');
+}
+
+// Both implementations hash the same UTF-8 bytes; never skip identity checking.
+export async function sha256Hex(source:string):Promise<string> {
+ const data = new TextEncoder().encode(source), subtle = globalThis.crypto?.subtle;
+ const hash = subtle ? new Uint8Array(await subtle.digest('SHA-256', data)) : sha256(data);
+ return Array.from(hash,b=>b.toString(16).padStart(2,'0')).join('');
 }
 
 export async function validateFull(input:unknown):Promise<FullSnapshot> {
@@ -81,11 +89,8 @@ export async function validateFull(input:unknown):Promise<FullSnapshot> {
   }
  }
  // Bounded batches avoid 20k simultaneous WebCrypto jobs on a real Full.
- check(globalThis.crypto?.subtle, 'проверка SHA-256 требует HTTPS или localhost');
- const encoder = new TextEncoder();
  for (let i=0;i<d.objects.length;i+=256) await Promise.all(d.objects.slice(i,i+256).map(async o=>{
-  const hash = await crypto.subtle.digest('SHA-256',encoder.encode(o.sourceRecord));
-  const hex = Array.from(new Uint8Array(hash),b=>b.toString(16).padStart(2,'0')).join('');
+  const hex = await sha256Hex(o.sourceRecord);
   check(o.id === `TLCScanner:v1:${hex}`, 'id derivation');
  }));
  const assets = new Set<string>();

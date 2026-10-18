@@ -9,7 +9,9 @@ No deployment changes are required.
 Select the official `full.json` with the file picker. The only accepted root contract is
 `schema: "tlc-full-snapshot/1"`, `representation: "full"`. Scanner, experimental
 MapSnapshot/POI exports and other versions are rejected. No Scanner file is required.
-SHA-256 verification uses browser WebCrypto (HTTPS or localhost required).
+SHA-256 verification uses WebCrypto when available and the local `@noble/hashes`
+SHA-256 implementation otherwise, including ordinary HTTP. Both hash the same UTF-8
+sourceRecord bytes and verify the full stable ID; no server or certificate change is needed.
 The complete accepted document and its exact JSON text remain in page memory, separately
 from the derived map projection. Reload discards them. Nothing is uploaded or stored in
 localStorage. Invalid imports leave the previously accepted snapshot, view and selection intact.
