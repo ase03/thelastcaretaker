@@ -7,14 +7,17 @@
     "dev": "vite dev",
     "build": "node tools/catalog-view.mjs && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test tests/map.test.mjs tests/snapshot.test.mjs tests/catalog.test.mjs",
-    "test:ui": "playwright test"
+    "test": "node --experimental-strip-types --test tests/map.test.mjs tests/snapshot.test.mjs tests/catalog.test.mjs tests/player-states.test.mjs tests/full-source.test.mjs",
+    "test:ui": "playwright test",
+    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test:api": "node --test tests/api-built.test.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.64.0",
-    "@sveltejs/adapter-static": "^3.0.10",
+    "@sveltejs/adapter-node": "^5.5.7",
     "@sveltejs/kit": "^2.51.0",
     "@sveltejs/vite-plugin-svelte": "^6.2.4",
+    "@types/node": "^24.19.2",
     "@types/three": "^0.186.0",
     "svelte": "^5.50.3",
     "svelte-check": "^4.7.6",

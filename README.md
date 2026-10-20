@@ -28,9 +28,9 @@ A web-based profession build optimizer for [The Last Caretaker](https://store.st
 
 ## Tech Stack
 
-- **SvelteKit 2** + **Svelte 5** + **TypeScript** — static SPA with runes (no server runtime)
+- **SvelteKit 2** + **Svelte 5** + **TypeScript** — SPA with runes and adapter-node API
 - **javascript-lp-solver** — pure JS integer linear programming solver
-- **nginx** — static file serving in Docker
+- **nginx** — sole public entry point; Node is internal to Docker
 
 ## Game Data
 
@@ -63,7 +63,77 @@ npm run preview
 docker compose up -d --build
 ```
 
-Serves on port **3080**.
+Serves on port **80** at `http://tlc.aqua.lan`; ensure this LAN name resolves to the VM.
+Only Nginx publishes a host port. `app` is a single Node process on the Compose network.
+Keep both existing World Catalog directories under `data/`; the new writable bind is
+`data/player-states`. No database or published-state history is created.
+
+From the existing repository directory on the VM, the user deploys manually:
+
+```bash
+git status --short
+git fetch origin
+git merge --ff-only origin/main
+mkdir -p data/player-states
+docker compose config
+docker compose up -d --build --remove-orphans
+docker compose ps
+curl -i http://tlc.aqua.lan/api/players
+```
+
+Stop on unexpected local changes or a non-fast-forward merge. The Compose update replaces
+the old static container, changes 3080 to 80, and starts the internal Node application.
+Nginx retains catalog aliases, proxies `/api/` without caching, and proxies pages/assets
+to Node. Do not expose port 3000. `ORIGIN` must match the LAN site URL if the hostname changes.
+
+### Full publication and verification
+
+`PUT /api/players/<17-digit SteamID>/state` accepts the existing strict Full v1 JSON,
+unchanged. The URL and metadata SteamID must agree. Both Nginx and Node limit requests
+to 64 MiB (67,108,864 bytes). A retained enriched Full from build 25982825 was checked
+at 38,555,210 bytes; no new save extraction is required for transport.
+
+First publication requires `If-None-Match: *`; replacement requires the current GET's
+`ETag` in `If-Match`. Exact byte repeats return 200 without writing, including retries
+with an old precondition. Changed bytes with the same generation, an older source mtime,
+or equal mtime with a different source SHA return 409. A stale precondition returns 412.
+One active publisher per SteamID is assumed: mtime is a file ordering policy, not a
+game clock or cross-PC chronology. Do not automatically force/rebase conflicting uploads.
+API responses use `Cache-Control: no-store`.
+
+On a machine with a confirmed current-contract Full, substitute its SteamID and path:
+
+```bash
+curl -i -X PUT 'http://tlc.aqua.lan/api/players/76561198436735921/state' \
+  -H 'Content-Type: application/json' -H 'If-None-Match: *' --data-binary @full.json
+curl -i 'http://tlc.aqua.lan/api/players/76561198436735921/state'
+curl -i 'http://tlc.aqua.lan/api/players'
+```
+
+For replacement use `-H 'If-Match: "<GET ETag hash>"'` instead of If-None-Match.
+On Windows use `curl.exe`; the command above is shell syntax for the VM or another Unix
+client. Prefer the Agent's automatic sender for ordinary use. A manual identical repeat
+must return 200; malformed Full/SteamID must be rejected while the prior GET stays intact.
+
+Open `/map`, select a listed SteamID, check the source label and personal POI/finds;
+use **Обновить список** / **Обновить Full** to refresh. Switch quickly between players,
+then import a local Full: the last selection wins. Failed player loads leave the personal
+layer empty. Static POI/icons and local 3D remain available. No polling or upload occurs
+from the map; manual files stay in browser memory. This LAN API has no authentication.
+
+### Checks without a running server
+
+```bash
+npm ci
+npm run check
+npm test
+npm run build
+npm run test:api
+```
+
+The built API test calls SvelteKit directly with Request/Response objects: no listening
+server, Docker or browser is started. Player switching/manual-import races use the same
+loader as `/map`; rendering is checked by svelte-check and production compilation.
 
 ## Project Structure
 

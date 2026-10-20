@@ -1,10 +1,22 @@
 services:
-  lastcaretaker-calc:
+  app:
     build: .
-    container_name: lastcaretaker-calc
-    ports:
-      - "3080:80"
+    environment:
+      ORIGIN: http://tlc.aqua.lan
+      BODY_SIZE_LIMIT: "67108864"
+      PLAYER_STATES_DIR: /app/data/player-states
     volumes:
+      - ./data/player-states:/app/data/player-states
+    restart: unless-stopped
+  lastcaretaker-calc:
+    image: nginx:alpine
+    container_name: lastcaretaker-calc
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
       - ./data/world-catalog/25982825:/opt/world-catalog/25982825:ro
       - ./data/world-catalog-view/25982825:/opt/world-catalog-view/25982825:ro
     restart: unless-stopped

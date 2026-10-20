@@ -12,8 +12,9 @@
  import '../../app.css';
  import {onMount} from 'svelte';
  import {metres,type POI} from '$lib/map/coordinates';
- import {projectFull,groupSummary,groupMarker,itemMarker,categoryColors,type Snapshot,type Group,type Occurrence} from '$lib/map/snapshot';
- import {readFull,type FullSnapshot} from '$lib/map/full-snapshot';
+ import {groupSummary,groupMarker,itemMarker,categoryColors,type Snapshot,type Group,type Occurrence} from '$lib/map/snapshot';
+ import {type FullSnapshot} from '$lib/map/full-snapshot';
+ import {fullSourceLoader} from '$lib/map/full-source';
  import {heightColor,heightTone} from '$lib/map/appearance';
  import {placeLabels} from '$lib/map/labels';
  import type {Frame} from '$lib/map/renderer';
@@ -25,7 +26,8 @@
  const pois=$derived(mergeWorld(basePois,snapshot.pois));
  // Keep the complete accepted document and exact source text, separate from its map view.
  let accepted=$state.raw<{full:FullSnapshot;sourceText:string}|null>(null);
- let transition:Promise<void>=Promise.resolve();let importGeneration=0;
+ let transition:Promise<void>=Promise.resolve();let playersGeneration=0;
+ let players=$state<string[]>([]),player=$state(''),sourceLabel=$state(''),sourceBusy=$state(false),playersError=$state(''),playersBusy=$state(false);
  let savedGlobal:{mode:'2D'|'3D';camera:unknown}|null=null;
  const activeGroup=$derived(selectedGroup??(selected?snapshot.groups.find(g=>g.poiId===selected?.id)??null:null));
  const localItems=$derived(localGroup?snapshot.occurrences.filter(i=>localGroup!.occurrenceKeys.includes(i.key)):[]);
@@ -37,19 +39,53 @@
  const labeledMarkers = $derived(placeLabels(frame.markers,localGroup?selectedItem?.key:selectedGroup?selectedGroup.id:selected?.id,host?.clientWidth??1,host?.clientHeight??1,measureText));
  const filtered=$derived(pois.filter(p=>p.name.toLowerCase().includes(search.toLowerCase())||p.componentName?.toLowerCase().includes(search.toLowerCase())||p.id.toLowerCase().includes(search.toLowerCase())));
  onMount(()=>{let cancelled=false;void loadWorld().then(records=>{if(!cancelled)basePois=records;}).catch(e=>{if(!cancelled)worldError=String(e);}).finally(()=>{if(!cancelled)worldLoading=false;});return()=>{cancelled=true;};});
- onMount(()=>{const context=document.createElement('canvas').getContext('2d');if(context){context.font='13px system-ui';const widths=new Map<string,number>();measureText=name=>{if(!widths.has(name))widths.set(name,context.measureText(name).width);return widths.get(name)!;};}let cancelled=false;import('$lib/map/renderer').then(({createMap})=>{if(cancelled)return;try{engine=createMap(host,f=>frame=f,p=>pointer=p);engine.setPOIs(rendered);ready=true;}catch(e){error=`WebGL недоступен: ${String(e)}`;}}).catch(e=>error=String(e));return()=>{cancelled=true;generation++;importGeneration++;engine?.dispose();};});
+ onMount(()=>{const context=document.createElement('canvas').getContext('2d');if(context){context.font='13px system-ui';const widths=new Map<string,number>();measureText=name=>{if(!widths.has(name))widths.set(name,context.measureText(name).width);return widths.get(name)!;};}let cancelled=false;import('$lib/map/renderer').then(({createMap})=>{if(cancelled)return;try{engine=createMap(host,f=>frame=f,p=>pointer=p);engine.setPOIs(rendered);ready=true;}catch(e){error=`WebGL недоступен: ${String(e)}`;}}).catch(e=>error=String(e));return()=>{cancelled=true;generation++;loader.cancel();playersGeneration++;engine?.dispose();};});
+ function clearPersonal(){
+  accepted=null;snapshot={pois:[],occurrences:[],groups:[],metadata:null};sourceLabel='';
+  selected=null;selectedGroup=null;selectedItem=null;hovered=undefined;showFinds=false;localGroup=null;savedGlobal=null;search='';
+  engine?.setPOIs(show?basePois:[]);syncAppearance();
+ }
+ const loader=fullSourceLoader({
+  busy:value=>sourceBusy=value,error:message=>error=message,
+  reset:async current=>{
+   await transition;if(!current())return;
+   if(localGroup)await backToMap();if(!current())return;
+   clearPersonal();error='';
+  },
+  accept:async(value,current)=>{
+   await transition;if(!current())return;
+   if(localGroup)await backToMap();if(!current())return;
+   clearPersonal();accepted={full:value.full,sourceText:value.sourceText};snapshot=value.snapshot;sourceLabel=value.source;error='';
+   engine?.setPOIs(show?pois:[]);syncAppearance();
+  }
+ });
+ async function refreshPlayers(){
+  const ticket=++playersGeneration;playersBusy=true;playersError='';
+  try{
+   const response=await fetch('/api/players',{cache:'no-store'});
+   if(!response.ok)throw Error(`Список игроков недоступен (${response.status})`);
+   const data=await response.json();
+   if(!Array.isArray(data.players)||!data.players.every((p:any)=>typeof p.steamId64==='string'&&/^\d{17}$/.test(p.steamId64)))throw Error('Некорректный список игроков');
+   if(ticket===playersGeneration)players=data.players.map((p:any)=>p.steamId64);
+  }catch(e){if(ticket===playersGeneration)playersError=String(e);}
+  finally{if(ticket===playersGeneration)playersBusy=false;}
+ }
+ async function loadPlayer(){
+  const id=player;
+  await loader.load(async()=>{
+   if(!id)throw Error('Выберите SteamID');
+   const response=await fetch(`/api/players/${id}/state`,{cache:'no-store'});
+   if(!response.ok)throw Error(`Full недоступен (${response.status})`);
+   return response.text();
+  },`TLC Hub · SteamID ${id}`,true,id);
+ }
  async function load(e:Event){
   const input=e.target as HTMLInputElement,file=input.files?.[0];if(!file)return;
-  const importTicket=++importGeneration;
-  try{
-   const text=await file.text(),full=await readFull(text),next=projectFull(full);
-   await transition;if(importTicket!==importGeneration)return;
-   if(localGroup)await backToMap();if(importTicket!==importGeneration)return;
-   accepted={full,sourceText:text};snapshot=next;selected=null;selectedGroup=null;selectedItem=null;
-   hovered=undefined;showFinds=false;localGroup=null;savedGlobal=null;search='';error='';engine?.setPOIs(show?pois:[]);syncAppearance();
-  }catch(e){if(importTicket===importGeneration)error=String(e);}
-  finally{if(importTicket===importGeneration)input.value='';}
+  player='';
+  try{await loader.load(()=>file.text(),`Файл · ${file.name}`);}
+  finally{input.value='';}
  }
+ onMount(()=>{void refreshPlayers();});
  function switchMode(next:'2D'|'3D'){transition=changeMode(next);return transition;}
  async function changeMode(next:'2D'|'3D'){
   if(next===mode||!ready)return;ready=false;const ticket=++generation;
@@ -98,7 +134,16 @@
 <div class="map-app">
  <header><div><h1>TLC Hub Map</h1><small>Мировые координаты · UE / сантиметры</small></div><nav><a href="/">Build Optimizer</a><a href="/inventory">Inventory</a><span>Map</span></nav></header>
  <main>
- <aside><label class="import">Импорт Full v1 · full.json<input type="file" accept=".json,application/json" onchange={load} disabled={!ready}/></label><p class="muted">Файл остаётся в памяти этой страницы. Ничего не отправляется на сервер.</p>
+ <aside>
+ <label>SteamID на TLC Hub<select aria-label="SteamID на TLC Hub" bind:value={player} onchange={loadPlayer} disabled={!ready}>
+ <option value="">Выберите игрока</option>{#each players as id}<option value={id}>{id}</option>{/each}
+ </select></label>
+ <button onclick={refreshPlayers} disabled={playersBusy}>Обновить список</button>
+ <button onclick={loadPlayer} disabled={!player||!ready}>Обновить Full</button>
+ {#if playersError}<p class="error">{playersError}</p>{:else if !playersBusy&&!players.length}<p class="muted">Опубликованных Full пока нет.</p>{/if}
+ {#if sourceBusy}<p role="status">Загрузка персональных данных…</p>{/if}
+ {#if sourceLabel}<p class="muted" aria-label="Источник персональных данных">Источник: {sourceLabel}</p>{/if}
+ <label class="import">Импорт Full v1 · full.json<input type="file" accept=".json,application/json" onchange={load} disabled={!ready}/></label><p class="muted">Ручной импорт остаётся в памяти страницы и не отправляется на сервер.</p>
  {#if snapshot.metadata}<details class="snapshot-info" open><summary>Full v1 · build {snapshot.metadata.gameBuild}</summary><p>{accepted?.full.objects.length} записей · {snapshot.pois.length} POI с подтверждённым знанием в Full</p><p>{snapshot.occurrences.length} находок · {snapshot.groups.length} групп</p><p>Без подтверждённых координат: {snapshot.stats?.missingCoordinates}</p>{#each snapshot.metadata.warnings as warning}<p class="muted">{warning}</p>{/each}<p role="status">Спойлеры: Full содержит координаты кандидатов. Тумблер скрывает их только на карте.</p></details>{/if}
  {#if localGroup}<button onclick={backToMap} disabled={!ready}>Вернуться к карте</button><h2>Локальный 3D · область находок</h2><p class="muted">Левая кнопка — pan · правая — вращение · колесо — zoom. Сенсорный экран: один палец — вращение, два — pan/zoom.</p><p>{groupSummary(localGroup)}</p><p class="muted">Опорная плоскость Z: {metres(localGroup.bounds.min.z??0)} м. Назначение — пространственная гипотеза.</p>
  <div class="list">{#each localItems as item (item.key)}<button class="item-row" class:active={selectedItem?.key===item.key} aria-pressed={selectedItem?.key===item.key} style:color={categoryColors[item.category]} onclick={()=>selectedItem=item}>
