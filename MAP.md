@@ -37,7 +37,11 @@ areas, local 3D and saved global camera return use the existing mechanisms.
 Item references still use small hashed JSON files, at most six concurrent
 requests. Exact definition names update the list, local marker labels and item
 heading; stale responses are ignored and missing names retain technical text.
-Item icons appear in cards only, never on the map. The accepted Full, occurrence
+Within a local findings area, exact item icons appear in the list, scene markers
+and the existing reference card. Missing references or failed PNGs retain the
+standard marker and resolved name. Local scene badges show ×N for quantities
+greater than one; the list always shows the exact quantity. Global world/POI
+and area markers are unchanged and never receive item icons. The accepted Full, occurrence
 IDs, coordinates, groups and ownership evidence remain untouched.
 
 ## Data delivery on the existing Linux VM

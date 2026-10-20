@@ -30,3 +30,8 @@ export function displayName(item:{name:string|null;definitionId:string},referenc
 export function iconUrl(reference?:Reference|null){
  return reference?.icon?`/world-catalog/${reference.gameBuild}/${reference.icon}`:null;
 }
+/** Item imagery is usable only for the exact definition, like its display name. */
+export function itemIcon(item:{definitionId:string},reference?:Reference|null){
+ return reference?.objectPath===item.definitionId?iconUrl(reference):null;
+}
+export function quantityLabel(quantity:bigint){return quantity>1n?`×${quantity}`:'';}

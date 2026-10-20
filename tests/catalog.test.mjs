@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {selectReferences,selectStaticPOIs} from '../tools/catalog-view.mjs';
-import {loadReference,loadReferences,displayName} from '../src/lib/map/catalog.ts';
+import {loadReference,loadReferences,displayName,itemIcon,quantityLabel} from '../src/lib/map/catalog.ts';
 import {loadWorld,mergeWorld,WORLD_BUILD} from '../src/lib/map/world.ts';
 import {projectFull} from '../src/lib/map/snapshot.ts';
 import {fixture} from './snapshot-fixture.mjs';
@@ -65,6 +65,23 @@ test('display names preserve identity, fallback and exact joins',()=>{
  assert.equal(displayName(item,{...reference,objectPath:'/Game/Other.Other'}),item.name);
  assert.equal(displayName(item,{...reference,name:''}),item.name);
  assert.deepEqual(item,before);
+});
+
+test('local item imagery uses exact definition references and keeps name when icon is unavailable',()=>{
+ const item={definitionId:'/Game/Item.Item',name:'Technical',quantity:2n,key:'occurrence',world:{x:1,y:2,z:3}};
+ const before=structuredClone(item),reference={schema:'tlc-map-reference/1',objectPath:item.definitionId,gameBuild:'25982825',name:'Original item',icon:'images/Item.png',fields:{}};
+ assert.equal(itemIcon(item,reference),'/world-catalog/25982825/images/Item.png');
+ assert.equal(displayName(item,reference),'Original item');
+ assert.equal(itemIcon(item,{...reference,objectPath:'/Game/Other.Other'}),null);
+ assert.equal(itemIcon(item,{...reference,icon:null}),null);
+ assert.equal(displayName(item,{...reference,icon:null}),'Original item');
+ assert.equal(itemIcon(item,null),null);assert.equal(itemIcon(item,undefined),null);
+ assert.deepEqual(item,before);
+});
+
+test('local quantity badges omit single units and retain exact large Full quantities',()=>{
+ assert.equal(quantityLabel(1n),'');assert.equal(quantityLabel(2n),'×2');
+ assert.equal(quantityLabel(18446744073709551615n),'×18446744073709551615');
 });
 
 test('reference batches deduplicate paths, keep failures local and reject stale completions',async()=>{
