@@ -6,8 +6,12 @@ World Catalog deployment is described below.
 
 ## World Catalog references
 
-Selecting an occurrence requests one small JSON by SHA-256 of its exact Full
-definition path. No full catalog/index is downloaded. No assetName lookup,
+Opening a local area requests one small JSON per unique exact Full definition
+path (SHA-256 filename), with at most six concurrent requests. Names update the
+list, local marker labels and item heading without modifying the accepted Full,
+occurrence IDs or group assignments. Stale group/import responses are ignored;
+missing names retain the original technical text. Item icons stay in cards only.
+No full catalog/index is downloaded. No assetName lookup,
 coordinates, discovery, ownership or availability are inferred. Save facts and
 reference data remain separate. The existing installed/reviewed metadata build
 is used for lookup; the actual save build stays unknown.
@@ -18,8 +22,27 @@ runs it if TLC_WORLD_CATALOG is set. Only selected observed item types, inline
 SourceString or exact StringTable name, and original Category, Quality, Weight,
 MaxStackCount are emitted. No units/defaults or translation fallback are invented.
 Icons require explicit Icon bindings and exactly one original decoded image;
-unresolved `.0` references stay unresolved. No actor, quest, location, recipe or
-loot graph is emitted. Missing references are displayed as unavailable.
+unresolved `.0` references stay unresolved. No quest, recipe, loot or spatial
+graph is emitted. Missing references are displayed as unavailable.
+
+Known POI use their original Full ComponentPath for an exact catalog join.
+The same per-object reference format and URL serve icon-only component views.
+The only accepted chain is VoyageLocatorComponent OverrideIndicator binding →
+VoyageIndicatorData Icons entry for effective Config.Type Location → explicit
+texture binding → one available original image. Effective Config is selected
+using observed bUseConfigAsset and a bound VoyageLocatorPropertyData; absent
+defaults, widget fallback and ambiguous references are not reconstructed.
+These rules follow the build25982825 research in tlc-hub and existing
+Voyage-TLC Reports/2026-10-18-location-display-build25982825/report.ru.md,
+plus Reports/2026-10-18-world-catalog-visual-assets/report.ru.md. That research
+confirms component OverrideIndicator selection, effective config replacement
+(no scalar merge), and the type-keyed Icons lookup. No resources were extracted.
+
+Only POI DOM markers may show these images. Missing JSON/PNG keeps the original
+glyph. Selection and labels remain on the existing button, and both renderers
+retain the original coordinates. Finds and area markers never get map icons.
+Area grouping remains the original 200×200m algorithm and camera transitions
+are unchanged; asynchronous display-name updates preserve the camera.
 
 Compose mounts the existing catalog and generated view read-only in the same
 container, retaining port 3080:80. Nginx permits only hashed item JSON and PNG
@@ -44,18 +67,21 @@ curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3080/world-catalog/259
 
 The last request must return 404. In `/map`, import Full, enable finds, open a
 group and select an item to see a separate reference card. Nothing uploads Full.
-No live deployment is performed by this change. Local portable Nginx 1.28.0
-validation passed: configuration syntax, /map, real item JSON and original PNG
-returned 200; catalog.json and unknown paths returned 404. Linux Docker Compose
-validation/redeployment still requires the user's host; Docker is unavailable here.
+No live deployment is performed by this change. Do not run local Nginx, Docker,
+test web servers or browser UI checks for this task. The user performs visual
+verification on the existing Hyper-V site at http://tlc.aqua.lan:3080/map.
 
 Verified with the existing local build 25982825 catalog (15,611,054-byte JSON,
-7,793 objects, 594 images): projection emits 798 references, 772 source names,
-6 explicit-bound icons, 219,873 bytes total JSON. All 884 eligible occurrences
-in the existing official Full fixture have exact catalog paths. No extraction or
-catalog transfer was performed. Checks: 53 unit tests; svelte-check zero errors
-or warnings; production build; 10 Chromium UI tests including real Full over
-localhost/plain HTTP, preserved 2D/3D behavior and per-item enrichment.
+7,793 objects, 594 images): projection emits 798 item references plus 23 POI
+component icon references (22 GrowRoom and one Scanner). Only Seed Vault and
+Lazarus indicators have confirmed Icons-to-texture bindings; the other 27
+indicator assets remain unavailable for map imagery despite existing PNGs.
+The current private Full fixture matches three known Seed Reserve POI icons;
+876 of its 884 eligible occurrences have a reference name, with eight retaining
+technical text. DA_ItemLoot_Teddy_02 resolves exactly to Teddy Bear; its icon
+is unresolved and stays absent. No extraction or catalog transfer was performed.
+Checks: 56 unit tests; svelte-check zero errors or warnings; production build.
+No browser, web server, Nginx or Docker was launched for this update.
 
 ## Local Full v1 import
 

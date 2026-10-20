@@ -13,7 +13,8 @@ export function projectFull(full:FullSnapshot):Snapshot {
  const gameBuild=full.metadata.installedBuildId ?? full.metadata.reviewedMetadataBuild;
  const pois:POI[]=full.pois.map(p=>({id:`poi:${p.Asset}`,name:[p.DisplayName,p.Name,p.Asset].find(v=>typeof v==='string' && v.length>0) ?? p.Asset,
   world:world([p.Position.X,p.Position.Y,p.Position.Z]),source:'Serialized Location discovery; static root locator',
-  gameBuild,knowledge:'known',accuracy:p.CoordinateType,layer:'poi',visibility:'local'}));
+  gameBuild,knowledge:'known',accuracy:p.CoordinateType,layer:'poi',visibility:'local',
+  ...(typeof p.ComponentPath==='string'&&p.ComponentPath.startsWith('/Game/')?{referencePath:p.ComponentPath}:{})}));
  const cells=new Map<string,Occurrence[]>();
  const occurrences:Occurrence[]=[];
  for (const o of full.objects) {

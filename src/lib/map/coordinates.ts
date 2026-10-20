@@ -4,7 +4,7 @@ export type Origin = {x:number;y:number;z:number};
 export type Scene = {x:number;y:number|null;z:number};
 export type SpatialLayer = "poi"|"memory"|"artifact"|"rare"|"saved-player"|"saved-ship"|"seabed"|"structure"|"cave"|"collision";
 export type SpatialRecord = {id:string;world:World;source:string;gameBuild:string;layer:SpatialLayer;visibility:"local"|"public"};
-export type POI = {id:string;name:string;world:World;source:string;gameBuild:string;knowledge:'known'|'unknown';accuracy:string;layer:'poi';visibility:'local'};
+export type POI = {id:string;name:string;world:World;source:string;gameBuild:string;knowledge:'known'|'unknown';accuracy:string;layer:'poi';visibility:'local';referencePath?:string};
 export const worldToScene = (p:World,o:Origin):Scene => ({x:(p.x-o.x)/100,y:p.z===null?null:(p.z-o.z)/100,z:(p.y-o.y)/100});
 export const sceneToWorld = (p:Scene,o:Origin):World => ({x:p.x*100+o.x,y:p.z*100+o.y,z:p.y===null?null:p.y*100+o.z});
 export function atPixel(cx:number,cy:number,span:number,width:number,height:number,px:number,py:number){return {x:cx+(px-width/2)*span/width,y:cy+(py-height/2)*span/width};}
