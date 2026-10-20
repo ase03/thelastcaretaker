@@ -10,7 +10,7 @@ for(const mode of ['2D','3D'])test(`snapshot groups, local XYZ and camera return
  await page.locator('.marker').click();const box=await page.locator('.marker').boundingBox();const readout=await page.locator('.readout').innerText();
  await page.getByRole('button',{name:'Показать область в 3D'}).click();await expect(page.locator('canvas')).toHaveCount(1);await expect(page.locator('.marker')).toHaveCount(2);
  const upper=await page.locator('.marker').filter({hasText:'item-high'}).boundingBox(),lower=await page.locator('.marker').filter({hasText:'item-low'}).boundingBox();expect(Math.abs(upper.y-lower.y)).toBeGreaterThan(20);
- await page.locator('.marker').filter({hasText:'item-low'}).click();await expect(page.locator('aside section')).toContainText('Raw XYZ: 100, 200, -5000');await expect(page.locator('aside section')).toContainText('количество: 3');
+ await page.locator('.marker').filter({hasText:'item-low'}).click();await expect(page.locator('aside section').filter({hasText:'Raw XYZ:'})).toContainText('Raw XYZ: 100, 200, -5000');await expect(page.locator('aside section').filter({hasText:'Raw XYZ:'})).toContainText('количество: 3');
  await page.getByRole('button',{name:'Вернуться к карте'}).first().click();await expect(page.getByRole('button',{name:mode,exact:true})).toHaveAttribute('aria-pressed','true');
  await expect.poll(async()=>{const b=await page.locator('.marker').boundingBox();return Math.abs(b.x-box.x)+Math.abs(b.y-box.y);}).toBeLessThan(1);
  expect((await page.locator('.readout').innerText()).split('\n').at(-1)).toBe(readout.split('\n').at(-1));

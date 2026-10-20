@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite dev",
-    "build": "vite build",
+    "build": "node tools/catalog-view.mjs && vite build",
     "preview": "vite preview",
-    "test": "node --experimental-strip-types --test tests/map.test.mjs tests/snapshot.test.mjs",
+    "test": "node --experimental-strip-types --test tests/map.test.mjs tests/snapshot.test.mjs tests/catalog.test.mjs",
     "test:ui": "playwright test"
   },
   "devDependencies": {

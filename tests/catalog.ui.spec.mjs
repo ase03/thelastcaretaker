@@ -1,0 +1,25 @@
+import {test,expect} from '@playwright/test';
+import {fixture} from './snapshot-fixture.mjs';
+import {createHash} from 'node:crypto';
+test('selected Full occurrence gets separate exact reference without uploading Full',async({page})=>{
+ const path='/Game/Test/Item.Item',key=createHash('sha256').update(path).digest('hex'),requests=[];
+ page.on('request',r=>requests.push({url:r.url(),method:r.method()}));
+ await page.route('**/world-catalog/**',route=>route.fulfill({contentType:'application/json',body:JSON.stringify({schema:'tlc-map-reference/1',gameBuild:'25982825',objectPath:path,name:'Reference item',icon:null,fields:{Weight:0}})}));
+ await page.goto('/map');await expect(page.locator('canvas')).toBeVisible();
+ expect(requests.some(r=>r.url.includes('/world-catalog/'))).toBe(false);
+ const full=fixture();full.metadata.reviewedMetadataBuild='25982825';full.objects[0].definition=path;
+ await page.locator('input[type=file]').setInputFiles({name:'full.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(full))});
+ await page.getByRole('checkbox',{name:'Показать находки'}).check();
+ await page.getByLabel('Группы находок').locator('button').first().click();
+ await page.getByRole('button',{name:'Показать область в 3D'}).click();
+ await page.locator('aside .list button').filter({hasText:'item-high'}).click();
+ await expect(page.getByLabel('Игровая справка')).toContainText('Reference item');
+ await expect(page.getByLabel('Игровая справка')).toContainText('Weight: 0');
+ await page.setViewportSize({width:390,height:844});
+ await expect(page.getByLabel('Игровая справка')).toContainText('Reference item');
+ await page.locator('aside .list button').filter({hasText:'item-low'}).click();
+ await expect(page.getByLabel('Игровая справка')).toContainText('Точное справочное соответствие отсутствует.');
+ await expect(page.getByLabel('Игровая справка')).not.toContainText('Reference item');
+ expect(requests.filter(r=>r.url.includes('/world-catalog/')).map(r=>new URL(r.url).pathname)).toEqual([`/world-catalog/25982825/items/${key}.json`]);
+ expect(requests.every(r=>r.method==='GET')).toBe(true);
+});

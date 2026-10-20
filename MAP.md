@@ -2,7 +2,60 @@
 
 The existing static SvelteKit app provides `/map`, the build optimizer and inventory calculator.
 Run `npm run dev`; build with `npm run build`, preview with `npm run preview`.
-No deployment changes are required.
+World Catalog deployment is described below.
+
+## World Catalog references
+
+Selecting an occurrence requests one small JSON by SHA-256 of its exact Full
+definition path. No full catalog/index is downloaded. No assetName lookup,
+coordinates, discovery, ownership or availability are inferred. Save facts and
+reference data remain separate. The existing installed/reviewed metadata build
+is used for lookup; the actual save build stays unknown.
+
+`tools/catalog-view.mjs` uses system Node 20+ to read the existing catalog and
+write `data/world-catalog-view/<build>/<sha256>.json`. The existing build also
+runs it if TLC_WORLD_CATALOG is set. Only selected observed item types, inline
+SourceString or exact StringTable name, and original Category, Quality, Weight,
+MaxStackCount are emitted. No units/defaults or translation fallback are invented.
+Icons require explicit Icon bindings and exactly one original decoded image;
+unresolved `.0` references stay unresolved. No actor, quest, location, recipe or
+loot graph is emitted. Missing references are displayed as unavailable.
+
+Compose mounts the existing catalog and generated view read-only in the same
+container, retaining port 3080:80. Nginx permits only hashed item JSON and PNG
+paths below `/world-catalog/25982825/`; catalog.json and other paths return 404.
+The original PNGs are served directly without copying. All data/ is excluded
+from Git and Docker context. Private Full files stay outside mounted directories.
+
+User-run deployment on the existing Linux VM, with system Node available:
+
+```sh
+set -eu
+cd /home/w10/thelastcaretaker
+test -z "$(git status --porcelain)"
+git pull --ff-only origin main
+test -f data/world-catalog/25982825/catalog.json
+TLC_WORLD_CATALOG="$PWD/data/world-catalog/25982825" node tools/catalog-view.mjs
+docker compose config
+docker compose up -d --build
+curl -f http://localhost:3080/map >/dev/null
+curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3080/world-catalog/25982825/catalog.json
+```
+
+The last request must return 404. In `/map`, import Full, enable finds, open a
+group and select an item to see a separate reference card. Nothing uploads Full.
+No live deployment is performed by this change. Local portable Nginx 1.28.0
+validation passed: configuration syntax, /map, real item JSON and original PNG
+returned 200; catalog.json and unknown paths returned 404. Linux Docker Compose
+validation/redeployment still requires the user's host; Docker is unavailable here.
+
+Verified with the existing local build 25982825 catalog (15,611,054-byte JSON,
+7,793 objects, 594 images): projection emits 798 references, 772 source names,
+6 explicit-bound icons, 219,873 bytes total JSON. All 884 eligible occurrences
+in the existing official Full fixture have exact catalog paths. No extraction or
+catalog transfer was performed. Checks: 53 unit tests; svelte-check zero errors
+or warnings; production build; 10 Chromium UI tests including real Full over
+localhost/plain HTTP, preserved 2D/3D behavior and per-item enrichment.
 
 ## Local Full v1 import
 

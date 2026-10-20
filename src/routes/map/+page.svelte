@@ -1,4 +1,14 @@
 <script lang="ts">
+ import {loadReference,type Reference} from '$lib/map/catalog';
+ let reference=$state<Reference|null>(null),referenceStatus=$state('');
+ $effect(()=>{
+  const item=selectedItem,build=snapshot.metadata?.gameBuild;
+  reference=null;referenceStatus='';let cancelled=false;
+  if(item&&build){referenceStatus='Загрузка справки…';loadReference(item.definitionId,build).then(v=>{
+   if(cancelled)return;reference=v;referenceStatus=v?'':'Точное справочное соответствие отсутствует.';
+  }).catch(()=>{if(!cancelled)referenceStatus='Справочник недоступен.';});}
+  return()=>{cancelled=true;};
+ });
  import '../../app.css';
  import {onMount} from 'svelte';
  import {metres,type POI} from '$lib/map/coordinates';
@@ -99,6 +109,13 @@
  {#if showFinds&&activeGroup}<section><h2>Область находок</h2><p>{groupSummary(activeGroup)}</p><button onclick={()=>openGroup(activeGroup!)} disabled={!ready}>Показать область в 3D</button></section>{/if}
  {#if showFinds}<div class="list" aria-label="Группы находок">{#each snapshot.groups as g (g.id)}<button onclick={()=>{selectedGroup=g;selected=pois.find(p=>p.id===g.poiId)??null;}}>{'Самостоятельная область'} · {g.occurrenceKeys.length}</button>{/each}</div>{/if}
  {/if}
+ {#if selectedItem}<section aria-label="Игровая справка"><h2>Игровая справка</h2><p class="muted">Статические данные определения. Не подтверждают знание игрока, владение или доступность. Build сохранения неизвестен; используется справочный build {snapshot.metadata?.gameBuild}.</p>
+ {#if reference}
+ <p>{reference.name??'Название не разрешено'}</p>
+ {#if reference.icon}<img width="64" height="64" alt={reference.name??'Иконка определения'} src={`/world-catalog/${reference.gameBuild}/${reference.icon}`}/>{/if}
+ {#each Object.entries(reference.fields) as [key,value]}<p>{key}: {String(value)}</p>{/each}
+ <details><summary>Точное соответствие objectPath</summary>{reference.objectPath}</details>
+ {:else}<p role="status">{referenceStatus}</p>{/if}</section>{/if}
  </aside>
  <div class="viewport" bind:this={host}>
  <div class="toolbar" role="toolbar">{#if !localGroup}<button aria-pressed={mode==='2D'} disabled={!ready} onclick={()=>switchMode('2D')}>2D</button><button aria-pressed={mode==='3D'} disabled={!ready} onclick={()=>switchMode('3D')}>3D</button>{:else}<button onclick={backToMap}>Вернуться к карте</button>{/if}<button onclick={()=>engine?.overview()}>Общий вид</button><button aria-label="Увеличить" onclick={()=>engine?.zoom(.5)}>+</button><button aria-label="Уменьшить" onclick={()=>engine?.zoom(2)}>−</button></div>

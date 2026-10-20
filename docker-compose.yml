@@ -4,4 +4,7 @@ services:
     container_name: lastcaretaker-calc
     ports:
       - "3080:80"
+    volumes:
+      - ./data/world-catalog/25982825:/opt/world-catalog/25982825:ro
+      - ./data/world-catalog-view/25982825:/opt/world-catalog-view/25982825:ro
     restart: unless-stopped
