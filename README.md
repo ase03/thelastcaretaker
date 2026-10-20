@@ -1,4 +1,4 @@
-# The Last Caretaker - Build Optimizer
+# The Last Caretaker — calculator and TLC Hub map
 
 A web-based profession build optimizer for [The Last Caretaker](https://store.steampowered.com/app/2722340/The_Last_Caretaker/). Select a profession and instantly get the optimal combination of Food and Memory items to meet its stat requirements with the minimum total items.
 
@@ -17,7 +17,7 @@ A web-based profession build optimizer for [The Last Caretaker](https://store.st
   - **Fewest Types** — minimizes the number of distinct memory types used (via big-M ILP), allowing more copies of fewer items
 - **Crafting Materials** — shows total ingredients needed to craft the recommended food items
 - **Item Icons** — all 55 item icons sourced from the [wiki](https://thelastcaretaker.wiki.gg)
-- **Instant Results** — all computation runs client-side, no server round-trips
+- **Instant Results** — calculator computation runs client-side; the map separately uses the Full API
 
 ### Inventory Mode (`/inventory`)
 - **Memory Inventory** — set quantities for each of the 33 memory items you have available
@@ -25,6 +25,12 @@ A web-based profession build optimizer for [The Last Caretaker](https://store.st
   - **Achievable** professions show the minimum memories needed from your inventory plus food items and crafting materials
   - **Partial** professions show trait coverage percentage and specific shortfalls
 - **Persistent Inventory** — quantities are saved to localStorage and persist across page changes and browser refreshes
+
+### TLC Hub map (`/map`)
+- Build-25982825 static overview with personal knowledge/findings from Full v1.
+- Published SteamID64 selection or manual Full import; explicit refresh, no polling.
+- Local 3D findings, without inferred player–Barge association or terrain geometry.
+See [map contracts and delivery](MAP.md).
 
 ## Tech Stack
 
@@ -59,29 +65,39 @@ npm run preview
 
 ## Docker Deployment
 
-```bash
-docker compose up -d --build
-```
-
 Serves on port **80** at `http://tlc.aqua.lan`; ensure this LAN name resolves to the VM.
 Only Nginx publishes a host port. `app` is a single Node process on the Compose network.
 Keep both existing World Catalog directories under `data/`; the new writable bind is
 `data/player-states`. No database or published-state history is created.
 
-From the existing repository directory on the VM, the user deploys manually:
+Deployment is performed only by the user; Git push does not deploy the VM.
+Keep `/home/w10/thelastcaretaker/data/world-catalog/25982825` (catalog/original images),
+`data/world-catalog-view/25982825` (generated views) and `data/player-states` (published
+Fulls) across rebuilds. They remain outside Git and Docker context. System Node is
+needed on the VM for the existing catalog generator. When updating reference data,
+the user transfers the reviewed catalog and required PNGs before running the sequence;
+retain the original images tree. User-run commands on the VM:
 
 ```bash
-git status --short
+set -eu
+cd /home/w10/thelastcaretaker
+test -z "$(git status --porcelain)"
+test "$(git branch --show-current)" = main
 git fetch origin
 git merge --ff-only origin/main
 mkdir -p data/player-states
+TLC_WORLD_CATALOG="$PWD/data/world-catalog/25982825" node tools/catalog-view.mjs
 docker compose config
 docker compose up -d --build --remove-orphans
 docker compose ps
-curl -i http://tlc.aqua.lan/api/players
+curl -f http://localhost/world-catalog/25982825/pois.json >/dev/null
+curl -f http://tlc.aqua.lan/api/players
 ```
 
-Stop on unexpected local changes or a non-fast-forward merge. The Compose update replaces
+Stop on unexpected local changes, another branch or a non-fast-forward merge.
+The generator must report 116 static POIs and 116 original icons. Verify `/map`
+without Full, then SteamID selection/manual import/findings/local 3D. These are
+user deployment checks, not a claim that the VM was inspected. The Compose update replaces
 the old static container, changes 3080 to 80, and starts the internal Node application.
 Nginx retains catalog aliases, proxies `/api/` without caching, and proxies pages/assets
 to Node. Do not expose port 3000. `ORIGIN` must match the LAN site URL if the hostname changes.
@@ -100,6 +116,14 @@ or equal mtime with a different source SHA return 409. A stale precondition retu
 One active publisher per SteamID is assumed: mtime is a file ordering policy, not a
 game clock or cross-PC chronology. Do not automatically force/rebase conflicting uploads.
 API responses use `Cache-Control: no-store`.
+
+`GET /api/players` returns published SteamID/generation/snapshot/source-time entries;
+`GET /api/players/<SteamID64>/state` returns exact Full bytes and SHA-256 ETag (or 404).
+Storage is `PLAYER_STATES_DIR/<SteamID64>.json`, default `data/player-states`, mounted
+at `/app/data/player-states`. One Node process serializes writes per player, validates
+Full, writes a unique adjacent temporary file, renames it over the latest JSON and
+removes temporary residue in finally. No source .sav, current.json or Scanner upload
+is required. SteamID is an identifier, not authenticated identity or ownership proof.
 
 On a machine with a confirmed current-contract Full, substitute its SteamID and path:
 

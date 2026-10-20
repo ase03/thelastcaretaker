@@ -26,7 +26,7 @@ The updated catalog provides all 116 icons from 24 original textures. The browse
 receives the small POI projection and PNGs, never the 15 MB catalog or a world
 index. No component-only reference files duplicate the static projection.
 
-Full remains local in page memory. Its confirmed POI knowledge joins the base
+Once loaded from the API or a manual file, Full stays in page memory. Its confirmed POI knowledge joins the base
 only by exact ComponentPath and matching reviewed catalog build, preserving base
 identity, title and coordinates. No match means unknown knowledge, never unopened.
 A green outline indicates confirmed Full knowledge; static presence is not a
@@ -46,36 +46,31 @@ IDs, coordinates, groups and ownership evidence remain untouched.
 
 ## Data delivery on the existing Linux VM
 
-The same Compose service, Nginx and port 3080 remain. Existing read-only mounts
-serve generated reference views and original PNGs. The only new permitted URL is
-the compact pois.json; the full catalog and other paths still return 404. All
-data/ remains excluded from Git and Docker context. No private Full is deployed.
+Compose now runs Nginx on host port **80** and one internal Node application on
+port 3000. Nginx retains read-only catalog/view mounts and proxies pages/assets
+and uncached `/api/` to Node. Writable `data/player-states` retains one latest Full
+per SteamID64 across rebuilds; no database or published-state history exists.
+All `data/` remains outside Git and Docker context. Only allowed reference URLs
+are served; the full catalog stays unavailable.
 
-The user transfers the updated local
-`C:/Users/aseco/Voyage-TLC/Static/WorldCatalog/25982825/catalog.json` to
-`/home/w10/thelastcaretaker/data/world-catalog/25982825/catalog.json` on the VM.
-Original PNGs did not change; keep the existing images/ tree. If it has not yet
-been transferred, the original files referenced by the projection must also be
-present. Regenerate views on the VM; no generated projection needs to enter Git.
+The exact user-run VM deployment sequence and checks are maintained in
+[README deployment](README.md#docker-deployment). The local catalog source is
+`C:/Users/aseco/Voyage-TLC/Static/WorldCatalog/25982825/catalog.json`; the user transfers
+it and any required original PNGs to the VM's existing
+`/home/w10/thelastcaretaker/data/world-catalog/25982825/` tree before regenerating views.
+The map URL is `http://tlc.aqua.lan/map`. A source update does not confirm deployment;
+no VM or SMB access is part of this documentation update.
 
-User-run commands, with system Node available:
+## Published Full selection
 
-```sh
-set -eu
-cd /home/w10/thelastcaretaker
-test -z "$(git status --porcelain)"
-git pull --ff-only origin main
-# Transfer catalog.json here, keeping the existing original images/ tree.
-TLC_WORLD_CATALOG="$PWD/data/world-catalog/25982825" node tools/catalog-view.mjs
-docker compose up -d --build
-curl -f http://localhost:3080/world-catalog/25982825/pois.json >/dev/null
-```
-
-The generator must report 116 static POIs and 116 original icons. Visual
-verification is user-run on http://tlc.aqua.lan:3080/map: open without Full,
-select Lazarus, import Full and confirm the base count and identities persist,
-then check findings/local 3D and return to the global camera. Deployment, SMB,
-local servers, Docker and browser UI tests were not run by this change.
+The map loads `/api/players` and offers SteamID64 selection and explicit list/Full
+refresh. Selection GETs `/api/players/<SteamID64>/state`, using the same strict Full
+reader as manual import and checking the selected SteamID. The latest selection/import
+wins even if an earlier response arrives later. Player loading clears personal data
+first; a failed load cannot show the previous player's layer. Invalid manual import
+preserves the accepted view. Neither path polls or uploads from the browser. Full
+bytes and projection stay in page memory; static POIs/icons remain independent.
+SteamID selection is not authentication.
 
 ## Local Full v1 import
 
@@ -126,7 +121,7 @@ official Full known POIs and eligible objects require complete finite XYZ.
 
 `npm test` checks the Full reader, projection, unknown-coordinate exclusion and renderer math.
 `npx svelte-check --tsconfig ./tsconfig.json` checks Svelte/TypeScript.
-`npm run build` builds the static site. `npx playwright install chromium` installs test Chromium
+`npm run build` builds the adapter-node site and API. `npx playwright install chromium` installs test Chromium
 in the standard user browser cache. `npm run test:ui` checks import replacement, labels, both
 camera modes, local groups, exact camera return and calculator interaction.
 An optional `TLC_FULL_JSON` environment variable enables a private official Full UI test.
