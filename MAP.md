@@ -1,87 +1,77 @@
 # TLC Hub Map
 
-The existing static SvelteKit app provides `/map`, the build optimizer and inventory calculator.
-Run `npm run dev`; build with `npm run build`, preview with `npm run preview`.
-World Catalog deployment is described below.
+The existing SvelteKit/Three.js frontend provides `/map`, the build optimizer and
+inventory calculator. Build with `npm run build`.
 
-## World Catalog references
+## Independent world map
 
-Opening a local area requests one small JSON per unique exact Full definition
-path (SHA-256 filename), with at most six concurrent requests. Names update the
-list, local marker labels and item heading without modifying the accepted Full,
-occurrence IDs or group assignments. Stale group/import responses are ignored;
-missing names retain the original technical text. Item icons stay in cards only.
-No full catalog/index is downloaded. No assetName lookup,
-coordinates, discovery, ownership or availability are inferred. Save facts and
-reference data remain separate. The existing installed/reviewed metadata build
-is used for lookup; the actual save build stays unknown.
+Opening `/map` requests one compact `/world-catalog/25982825/pois.json` projection:
+116 authored static root placements, without importing Full. Each identity is the
+complete ComponentPath, with unchanged world XYZ. Primary titles come from
+LocationAsset.Properties.Name; differing component DisplayName is retained as
+additional text (for example Eden Cradle / Seed Vault 2). Lazarus is included.
+The 12 unplaced definitions and 309 historical teleport destinations are excluded.
 
-`tools/catalog-view.mjs` uses system Node 20+ to read the existing catalog and
-write `data/world-catalog-view/<build>/<sha256>.json`. The existing build also
-runs it if TLC_WORLD_CATALOG is set. Only selected observed item types, inline
-SourceString or exact StringTable name, and original Category, Quality, Weight,
-MaxStackCount are emitted. No units/defaults or translation fallback are invented.
-Icons require explicit Icon bindings and exactly one original decoded image;
-unresolved `.0` references stay unresolved. No quest, recipe, loot or spatial
-graph is emitted. Missing references are displayed as unavailable.
+`tools/catalog-view.mjs` extends the existing deploy-time projection. It selects
+exact actor.RootComponent and LocationAsset bindings, verifies unattached roots,
+complete finite XYZ and primary titles, and requires 116 placements for this build.
+Icons follow component OverrideIndicator → effective Config.Type Location →
+Icons entry → explicit Texture2D binding → one original PNG. Missing bindings or
+images never remove a coordinate-confirmed POI; unresolved icons use the standard
+marker. Asset config replaces inline config; no scalar merge. Pishon has no
+serialized ConfigAsset reference and uses its observed inline Location config for
+this static projection. Its game ShowInMap=0 does not hide the overview POI.
 
-Known POI use their original Full ComponentPath for an exact catalog join.
-The same per-object reference format and URL serve icon-only component views.
-The only accepted chain is VoyageLocatorComponent OverrideIndicator binding →
-VoyageIndicatorData Icons entry for effective Config.Type Location → explicit
-texture binding → one available original image. Effective Config is selected
-using observed bUseConfigAsset and a bound VoyageLocatorPropertyData; absent
-defaults, widget fallback and ambiguous references are not reconstructed.
-These rules follow the build25982825 research in tlc-hub and existing
-Voyage-TLC Reports/2026-10-18-location-display-build25982825/report.ru.md,
-plus Reports/2026-10-18-world-catalog-visual-assets/report.ru.md. That research
-confirms component OverrideIndicator selection, effective config replacement
-(no scalar merge), and the type-keyed Icons lookup. No resources were extracted.
+The updated catalog provides all 116 icons from 24 original textures. The browser
+receives the small POI projection and PNGs, never the 15 MB catalog or a world
+index. No component-only reference files duplicate the static projection.
 
-Only POI DOM markers may show these images. Missing JSON/PNG keeps the original
-glyph. Selection and labels remain on the existing button, and both renderers
-retain the original coordinates. Finds and area markers never get map icons.
-Area grouping remains the original 200×200m algorithm and camera transitions
-are unchanged; asynchronous display-name updates preserve the camera.
+Full remains local in page memory. Its confirmed POI knowledge joins the base
+only by exact ComponentPath and matching reviewed catalog build, preserving base
+identity, title and coordinates. No match means unknown knowledge, never unopened.
+A green outline indicates confirmed Full knowledge; static presence is not a
+save fact. Additional unmatched confirmed Full POIs remain visible. Importing
+another Full replaces personal knowledge, not the static roster. Findings, 200 m
+areas, local 3D and saved global camera return use the existing mechanisms.
 
-Compose mounts the existing catalog and generated view read-only in the same
-container, retaining port 3080:80. Nginx permits only hashed item JSON and PNG
-paths below `/world-catalog/25982825/`; catalog.json and other paths return 404.
-The original PNGs are served directly without copying. All data/ is excluded
-from Git and Docker context. Private Full files stay outside mounted directories.
+Item references still use small hashed JSON files, at most six concurrent
+requests. Exact definition names update the list, local marker labels and item
+heading; stale responses are ignored and missing names retain technical text.
+Item icons appear in cards only, never on the map. The accepted Full, occurrence
+IDs, coordinates, groups and ownership evidence remain untouched.
 
-User-run deployment on the existing Linux VM, with system Node available:
+## Data delivery on the existing Linux VM
+
+The same Compose service, Nginx and port 3080 remain. Existing read-only mounts
+serve generated reference views and original PNGs. The only new permitted URL is
+the compact pois.json; the full catalog and other paths still return 404. All
+data/ remains excluded from Git and Docker context. No private Full is deployed.
+
+The user transfers the updated local
+`C:/Users/aseco/Voyage-TLC/Static/WorldCatalog/25982825/catalog.json` to
+`/home/w10/thelastcaretaker/data/world-catalog/25982825/catalog.json` on the VM.
+Original PNGs did not change; keep the existing images/ tree. If it has not yet
+been transferred, the original files referenced by the projection must also be
+present. Regenerate views on the VM; no generated projection needs to enter Git.
+
+User-run commands, with system Node available:
 
 ```sh
 set -eu
 cd /home/w10/thelastcaretaker
 test -z "$(git status --porcelain)"
 git pull --ff-only origin main
-test -f data/world-catalog/25982825/catalog.json
+# Transfer catalog.json here, keeping the existing original images/ tree.
 TLC_WORLD_CATALOG="$PWD/data/world-catalog/25982825" node tools/catalog-view.mjs
-docker compose config
 docker compose up -d --build
-curl -f http://localhost:3080/map >/dev/null
-curl -s -o /dev/null -w '%{http_code}\n' http://localhost:3080/world-catalog/25982825/catalog.json
+curl -f http://localhost:3080/world-catalog/25982825/pois.json >/dev/null
 ```
 
-The last request must return 404. In `/map`, import Full, enable finds, open a
-group and select an item to see a separate reference card. Nothing uploads Full.
-No live deployment is performed by this change. Do not run local Nginx, Docker,
-test web servers or browser UI checks for this task. The user performs visual
-verification on the existing Hyper-V site at http://tlc.aqua.lan:3080/map.
-
-Verified with the existing local build 25982825 catalog (15,611,054-byte JSON,
-7,793 objects, 594 images): projection emits 798 item references plus 23 POI
-component icon references (22 GrowRoom and one Scanner). Only Seed Vault and
-Lazarus indicators have confirmed Icons-to-texture bindings; the other 27
-indicator assets remain unavailable for map imagery despite existing PNGs.
-The current private Full fixture matches three known Seed Reserve POI icons;
-876 of its 884 eligible occurrences have a reference name, with eight retaining
-technical text. DA_ItemLoot_Teddy_02 resolves exactly to Teddy Bear; its icon
-is unresolved and stays absent. No extraction or catalog transfer was performed.
-Checks: 56 unit tests; svelte-check zero errors or warnings; production build.
-No browser, web server, Nginx or Docker was launched for this update.
+The generator must report 116 static POIs and 116 original icons. Visual
+verification is user-run on http://tlc.aqua.lan:3080/map: open without Full,
+select Lazarus, import Full and confirm the base count and identities persist,
+then check findings/local 3D and return to the global camera. Deployment, SMB,
+local servers, Docker and browser UI tests were not run by this change.
 
 ## Local Full v1 import
 
@@ -116,7 +106,7 @@ Finds use deterministic 200×200 m XY display cells, with all exact member XYZ p
 for local 3D. Cell boundaries may split nearby finds; equal cells do not imply a common
 structure. No nearest-POI assignment, geometric inference or building membership is asserted.
 Derived group/item markers carry knowledge=unknown; only confirmed POIs carry knowledge=known.
-The default global view shows known POIs; a toggle adds one marker per display cell.
+The default global view shows the static world plus confirmed Full knowledge; a toggle adds one marker per display cell.
 A selected area opens its eligible members in local 3D, then returns to the saved global camera.
 
 ## Rendering

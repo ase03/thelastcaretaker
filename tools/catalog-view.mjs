@@ -15,19 +15,6 @@ export function selectReferences(c) {
   return image&&/^images\/[A-Za-z0-9_\-/]+\.png$/.test(image.file)&&!image.file.split('/').includes('..')?image.file:null;
  };
  for(const o of c.objects){
-  // Component identity comes from Full.ComponentPath, never from asset basename.
-  // Current-build consumer selects OverrideIndicator and the effective Config.Type.
-  if(o.data.Type==='VoyageLocatorComponent'){
-   const p=o.data.Properties??{},lp=p.properties,indicator=bound(o,'/Properties/OverrideIndicator');
-   const configAsset=bound(o,'/Properties/properties/ConfigAsset');
-   const config=lp?.bUseConfigAsset===true&&configAsset?.data.Type==='VoyageLocatorPropertyData'?configAsset.data.Properties?.Config:
-    lp?.bUseConfigAsset===false?lp.Config:null;
-   if(config?.Type!=='EVoyageLocatorType::Location'||indicator?.data.Type!=='VoyageIndicatorData')continue;
-   const entries=indicator.data.Properties?.Icons??[],matches=entries.map((e,i)=>e.Key===config.Type?i:-1).filter(i=>i>=0);
-   const icon=matches.length===1?imageFor(bound(indicator,`/Properties/Icons/${matches[0]}/Value`)):null;
-   if(icon)views.push({schema:'tlc-map-reference/1',gameBuild:c.gameBuild,objectPath:o.objectPath,name:null,icon,fields:{}});
-   continue;
-  }
   // Selected item subclasses only. Never emit quests, loot tables or coordinates.
   if(!['VoyageItem','VoyageItemConsumable','VoyageItemMaterial','VoyageItemPart','VoyageItemBallisticEquipment','VoyageItemHandEquipment','VoyageCartridgeItem'].includes(o.data.Type))continue;
   const p=o.data.Properties??{}, f=p.Name;
@@ -42,18 +29,58 @@ export function selectReferences(c) {
  return views;
 }
 
+/** Static authored root placements only; Full never supplies this world's roster. */
+export function selectStaticPOIs(c) {
+ if(c.schema!=='tlc-world-catalog/1'||c.gameBuild!=='25982825')throw Error('Expected build 25982825 World Catalog');
+ const objects=new Map(c.objects.map(o=>[o.objectPath,o]));
+ if(objects.size!==c.objects.length)throw Error('Duplicate objectPath');
+ const bound=(o,field)=>objects.get(o?.bindings?.find(b=>b.fieldPath===field)?.targetObjectPath);
+ const text=f=>typeof f?.SourceString==='string'?f.SourceString:typeof f?.CultureInvariantString==='string'?f.CultureInvariantString:
+  objects.get(f?.TableId)?.data.StringTable?.KeysToEntries?.[f?.Key];
+ const pois=[];
+ for(const component of c.objects){
+  if(component.data.Type!=='VoyageLocatorComponent')continue;
+  const actor=objects.get(component.objectPath.slice(0,component.objectPath.lastIndexOf('.'))),p=component.data.Properties??{};
+  if(actor?.data.Type!=='VoyageLocatorActor'||bound(actor,'/Properties/RootComponent')!==component||p.AttachParent)continue;
+  const location=bound(component,'/Properties/LocationAsset'),xyz=p.RelativeLocation;
+  const name=text(location?.data.Properties?.Name),componentName=text(p.properties?.DisplayName);
+  if(location?.data.Type!=='VoyageLocation'||!name?.trim()||!xyz||!['X','Y','Z'].every(k=>typeof xyz[k]==='number'&&Number.isFinite(xyz[k])&&Math.abs(xyz[k])<=1e12))throw Error(`Incomplete static POI: ${component.objectPath}`);
+  const lp=p.properties,configAsset=bound(component,'/Properties/properties/ConfigAsset');
+  // Pishon has bUseConfigAsset=true but no serialized ConfigAsset reference.
+  // The current native getter falls back to inline Config when the pointer is null.
+  const config=lp?.bUseConfigAsset===true&&configAsset?.data.Type==='VoyageLocatorPropertyData'?configAsset.data.Properties?.Config:
+   lp?.bUseConfigAsset===false||!lp?.ConfigAsset?lp?.Config:null;
+  const indicator=bound(component,'/Properties/OverrideIndicator');let icon=null;
+  if(config?.Type==='EVoyageLocatorType::Location'&&indicator?.data.Type==='VoyageIndicatorData'){
+   const entries=indicator.data.Properties?.Icons??[],matches=entries.map((e,i)=>e.Key===config.Type?i:-1).filter(i=>i>=0);
+   const texture=matches.length===1?bound(indicator,`/Properties/Icons/${matches[0]}/Value`):undefined;
+   const images=texture?.data.Type==='Texture2D'?c.images.filter(i=>i.textureObjectPath===texture.objectPath):[];
+   if(images.length===1&&/^images\/[A-Za-z0-9_\-/]+\.png$/.test(images[0].file))icon=images[0].file;
+  }
+  pois.push({id:component.objectPath,referencePath:component.objectPath,definitionPath:location.objectPath,name,
+   ...(componentName&&componentName!==name?{componentName}:{}),world:{x:xyz.X,y:xyz.Y,z:xyz.Z},icon,
+   source:'World Catalog; authored unattached root locator',gameBuild:c.gameBuild,knowledge:'unknown',
+   accuracy:'Unattached root component RelativeLocation = static actor world position',layer:'poi',visibility:'local'});
+ }
+ return pois;
+}
+
 // Invoked by the existing build, with the catalog outside Docker's build context.
 export async function generate(root=process.env.TLC_WORLD_CATALOG) {
  if(!root)return;
  const c=JSON.parse(await readFile(path.join(root,'catalog.json'),'utf8'));
- const views=selectReferences(c), output=path.resolve('data/world-catalog-view',c.gameBuild);
+ const views=selectReferences(c),pois=selectStaticPOIs(c), output=path.resolve('data/world-catalog-view',c.gameBuild);
+ if(pois.length!==116)throw Error(`Expected 116 static placements, got ${pois.length}`);
  for(const view of views)if(view.icon)await stat(path.join(root,view.icon));
+ for(const poi of pois)if(poi.icon)await stat(path.join(root,poi.icon));
  await mkdir(output,{recursive:true});
  for(const file of await readdir(output))if(/^[a-f0-9]{64}\.json$/.test(file))await unlink(path.join(output,file));
  for(const view of views){
   const key=createHash('sha256').update(view.objectPath).digest('hex');
   await writeFile(path.join(output,key+'.json'),JSON.stringify(view));
  }
+ await writeFile(path.join(output,'pois.json'),JSON.stringify({gameBuild:c.gameBuild,pois}));
+ console.log(`Static world: ${pois.length} POI; ${pois.filter(p=>p.icon).length} original icons`);
  console.log(`World Catalog ${c.gameBuild}: ${views.length} references; ${views.filter(v=>v.icon).length} exact icons`);
 }
 await generate();
